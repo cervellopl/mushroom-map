@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+
+# runtime data (user uploads + JSON store)
+uploads/
+data/mushrooms.json
+
+# build artifacts
+*.zip
+public/MushroomMap.lrplugin.zip
+
+# logs / os
+*.log
+.DS_Store

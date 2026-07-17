@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>🍄 Mushroom Map</title>
+
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <header>
+          <h1>🍄 Mushroom Map</h1>
+          <p class="sub">Log sightings &amp; explore where mushrooms grow.</p>
+        </header>
+
+        <section class="panel">
+          <h2>Filter</h2>
+          <label for="filter-name">Mushroom name</label>
+          <div class="filter-row">
+            <input
+              id="filter-name"
+              list="name-options"
+              placeholder="All mushrooms…"
+              autocomplete="off"
+            />
+            <datalist id="name-options"></datalist>
+            <button id="clear-filter" class="ghost" title="Clear">✕</button>
+          </div>
+          <p id="count" class="muted"></p>
+        </section>
+
+        <section class="panel">
+          <h2>Add a sighting</h2>
+          <form id="add-form">
+            <label for="f-name">Name *</label>
+            <input id="f-name" name="name" placeholder="e.g. Chanterelle" required />
+
+            <label for="f-image">Photo</label>
+            <input id="f-image" name="image" type="file" accept="image/*" />
+
+            <div class="coords">
+              <div>
+                <label for="f-lat">Latitude</label>
+                <input id="f-lat" name="lat" inputmode="decimal" />
+              </div>
+              <div>
+                <label for="f-lng">Longitude</label>
+                <input id="f-lng" name="lng" inputmode="decimal" />
+              </div>
+            </div>
+            <p class="hint">
+              Coordinates auto-fill from a geotagged photo's EXIF. Otherwise click
+              the map to drop a pin.
+            </p>
+
+            <label for="f-notes">Notes</label>
+            <textarea id="f-notes" name="notes" rows="2" placeholder="Habitat, date, etc."></textarea>
+
+            <button type="submit" id="submit-btn">Add sighting</button>
+            <p id="form-msg" class="muted"></p>
+          </form>
+        </section>
+      </aside>
+
+      <main id="map"></main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

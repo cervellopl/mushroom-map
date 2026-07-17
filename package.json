@@ -1,0 +1,16 @@
+{
+  "name": "mushroom-map-api",
+  "version": "1.0.0",
+  "description": "API and dark-themed map frontend for logging mushroom sightings with images, location, and name.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "exifr": "^7.1.3",
+    "express": "^4.19.2",
+    "multer": "^2.0.1"
+  }
+}
