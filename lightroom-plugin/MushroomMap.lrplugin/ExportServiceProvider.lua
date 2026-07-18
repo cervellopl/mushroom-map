@@ -25,6 +25,8 @@ local LrView = import 'LrView'
 local LrErrors = import 'LrErrors'
 local LrLogger = import 'LrLogger'
 
+local Common = require 'MushroomMapCommon'
+
 local logger = LrLogger('MushroomMap')
 logger:enable('logfile') -- writes to Documents/LrClassicLogs/MushroomMap.log
 
@@ -54,6 +56,28 @@ exportServiceProvider.exportPresetFields = {
 -- Export dialog UI
 --============================================================================
 
+-- Seed this export preset from the plugin-wide settings (Plug-in Manager), and
+-- mirror any edits back so both stay in sync.
+function exportServiceProvider.startDialog(propertyTable)
+	local prefs = Common.prefs()
+
+	local function seed(key)
+		local current = propertyTable[key]
+		local isUnset = current == nil or current == ''
+			or current == Common.DEFAULT_URL
+		if isUnset and prefs[key] ~= nil and prefs[key] ~= '' then
+			propertyTable[key] = prefs[key]
+		end
+	end
+
+	for _, key in ipairs { 'apiUrl', 'authUser', 'authPass', 'sentFolder' } do
+		seed(key)
+		propertyTable:addObserver(key, function()
+			prefs[key] = propertyTable[key]
+		end)
+	end
+end
+
 function exportServiceProvider.sectionsForTopOfDialog(f, propertyTable)
 	local bind = LrView.bind
 	local share = LrView.share
@@ -81,6 +105,18 @@ function exportServiceProvider.sectionsForTopOfDialog(f, propertyTable)
 			f:row {
 				f:static_text {
 					title = 'Leave username/password blank if the server has no Basic Auth.',
+					text_color = import('LrColor')(0.5, 0.5, 0.5),
+				},
+			},
+			f:row {
+				f:push_button {
+					title = 'Test connection',
+					action = function()
+						Common.testConnection(propertyTable.apiUrl, propertyTable.authUser, propertyTable.authPass)
+					end,
+				},
+				f:static_text {
+					title = 'These settings are shared with File ▸ Plug-in Manager.',
 					text_color = import('LrColor')(0.5, 0.5, 0.5),
 				},
 			},

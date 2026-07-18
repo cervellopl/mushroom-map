@@ -16,5 +16,8 @@ return {
 		file = 'ExportServiceProvider.lua',
 	},
 
+	-- Adds a settings panel to File > Plug-in Manager.
+	LrPluginInfoProvider = 'PluginInfoProvider.lua',
+
 	VERSION = { major = 1, minor = 0, revision = 0, build = 0 },
 }
