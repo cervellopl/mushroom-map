@@ -95,7 +95,11 @@ then sync them in bulk instead of exporting by hand:
    multi-collection sync labels everything correctly in one pass.
 
 Photos uploaded by an earlier sync are **skipped**, so re-running only sends
-what's new and never creates duplicates. The history is stored in the plugin's
+what's new and never creates duplicates.
+
+**Already uploaded photos before?** Tick those collections and click
+**Mark selected as synced** — it records them as sent *without* uploading, so
+your first real sync only pushes what is genuinely new. The history is stored in the plugin's
 preferences (by catalog photo id), so it is per-machine. **Reset sync history**
 clears it and makes the next sync re-upload everything.
 

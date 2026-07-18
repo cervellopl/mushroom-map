@@ -257,6 +257,38 @@ LrTasks.startAsyncTask(function()
 					end,
 				},
 				f:push_button {
+					title = 'Mark selected as synced',
+					action = function()
+						LrTasks.startAsyncTask(function()
+							local marked = 0
+							local history = loadSynced()
+							for i, entry in ipairs(entries) do
+								if props['sel_' .. i] then
+									LrTasks.pcall(function()
+										catalog:withReadAccessDo(function()
+											for _, photo in ipairs(entry.collection:getPhotos()) do
+												local id = tostring(photo.localIdentifier)
+												if not history[id] then
+													history[id] = true
+													marked = marked + 1
+												end
+											end
+										end, { timeout = 15 })
+									end)
+								end
+							end
+							saveSynced(history)
+							LrDialogs.message('Mushroom Map',
+								string.format(
+									'Marked %d photo%s as already uploaded, without sending them.\n\n' ..
+									'Use this for photos you uploaded before, so the next sync only ' ..
+									'sends new ones. Reopen this dialog to see the updated counts.',
+									marked, marked == 1 and '' or 's'),
+								'info')
+						end)
+					end,
+				},
+				f:push_button {
 					title = 'Reset sync history',
 					action = function()
 						saveSynced({})
