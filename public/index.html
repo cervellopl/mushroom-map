@@ -15,7 +15,10 @@
     <div id="app">
       <aside id="sidebar">
         <header>
-          <h1>🍄 Mushroom Map</h1>
+          <div class="title-row">
+            <h1>🍄 Mushroom Map</h1>
+            <button id="sidebar-hide" class="ghost small" title="Hide panel">‹‹</button>
+          </div>
           <p class="sub">Log sightings &amp; explore where mushrooms grow.</p>
         </header>
 
@@ -84,6 +87,18 @@
       </aside>
 
       <main id="map"></main>
+
+      <button id="sidebar-show" title="Show panel">››</button>
+
+      <div id="map-controls">
+        <div class="seg" role="group" aria-label="Base map">
+          <button id="base-dark" class="active">Dark</button>
+          <button id="base-sat">Satellite</button>
+        </div>
+        <button id="save-jpg" title="Save the current view as a JPG">
+          ⤓ Save JPG
+        </button>
+      </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

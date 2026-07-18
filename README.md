@@ -32,6 +32,11 @@ The startup log reports whether auth is `ENABLED` or `disabled`.
 ## Frontend
 
 - Dark UI with a full-screen map (CartoDB `dark_matter` tiles).
+- **Base map switch** — dark cartography or **satellite imagery** (Esri World Imagery).
+- **Hideable side panel** — collapse it for a full-width map, restore with the `››` button.
+- **Save JPG** — exports the current view as a JPEG with the markers and a species
+  legend drawn in. Tiles are re-fetched with CORS and composited onto a canvas, so
+  no screenshot tooling or external library is needed.
 - Each sighting is a 🍄 marker; click it for the photo, notes, coordinates, and a delete button.
 - **Filter** box (with autocomplete of known names) narrows the markers live.
 - **Add a sighting** form:

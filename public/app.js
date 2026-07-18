@@ -1,18 +1,51 @@
-// --- map setup (dark theme via CartoDB dark_matter tiles) ----------------
-const map = L.map("map", { zoomControl: true }).setView([50.06, 19.94], 6);
-
-L.tileLayer(
-  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-  {
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+// --- base maps -----------------------------------------------------------
+// Kept as plain config so the JPG export can re-fetch the same tiles itself.
+const BASE_LAYERS = {
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
     subdomains: "abcd",
     maxZoom: 20,
-  }
-).addTo(map);
+    background: "#0e1116",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    credit: "© OpenStreetMap © CARTO",
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    subdomains: "",
+    maxZoom: 19,
+    background: "#1b1d1a",
+    attribution:
+      'Tiles &copy; <a href="https://www.esri.com/">Esri</a> — Source: Esri, Maxar, Earthstar Geographics',
+    credit: "Tiles © Esri, Maxar, Earthstar Geographics",
+  },
+};
+
+let currentBase = "dark";
+
+const map = L.map("map", { zoomControl: true }).setView([50.06, 19.94], 6);
+
+let baseLayer = null;
+function setBaseLayer(key) {
+  const cfg = BASE_LAYERS[key];
+  if (!cfg) return;
+  if (baseLayer) map.removeLayer(baseLayer);
+  baseLayer = L.tileLayer(cfg.url, {
+    attribution: cfg.attribution,
+    subdomains: cfg.subdomains,
+    maxZoom: cfg.maxZoom,
+    crossOrigin: true, // required so the export canvas isn't tainted
+  }).addTo(map);
+  currentBase = key;
+
+  document.getElementById("base-dark").classList.toggle("active", key === "dark");
+  document.getElementById("base-sat").classList.toggle("active", key === "satellite");
+}
+setBaseLayer("dark");
 
 const markerLayer = L.layerGroup().addTo(map);
 const markersById = new Map();
+let currentList = []; // sightings currently shown (drives the legend + export)
 
 // --- per-species colour ---------------------------------------------------
 // A curated palette that reads well on dark tiles. Colours are handed out by
@@ -113,6 +146,7 @@ async function loadMushrooms() {
   const url = q ? `/api/mushrooms?name=${encodeURIComponent(q)}` : "/api/mushrooms";
   const res = await fetch(url);
   const list = await res.json();
+  currentList = list;
 
   renderMarkers(list);
   renderLegend(list);
@@ -332,6 +366,241 @@ refreshBtn.addEventListener("click", async () => {
     refreshBtn.disabled = false;
   }
 });
+
+// --- base map switch & collapsible sidebar -------------------------------
+document.getElementById("base-dark").onclick = () => setBaseLayer("dark");
+document.getElementById("base-sat").onclick = () => setBaseLayer("satellite");
+
+const appEl = document.getElementById("app");
+function setSidebar(visible) {
+  appEl.classList.toggle("collapsed", !visible);
+  // Leaflet must re-measure after the container resizes.
+  setTimeout(() => map.invalidateSize(), 220);
+}
+document.getElementById("sidebar-hide").onclick = () => setSidebar(false);
+document.getElementById("sidebar-show").onclick = () => setSidebar(true);
+
+// --- export the current view as a JPG ------------------------------------
+// Composites the visible tiles, the markers and a legend onto a canvas. Tiles
+// are re-fetched with CORS so the canvas stays exportable.
+function tileUrl(cfg, x, y, z) {
+  let url = cfg.url
+    .replace("{z}", z)
+    .replace("{x}", x)
+    .replace("{y}", y)
+    .replace("{r}", "");
+  if (cfg.subdomains && url.includes("{s}")) {
+    const subs = cfg.subdomains;
+    url = url.replace("{s}", subs[Math.abs(x + y) % subs.length]);
+  }
+  return url;
+}
+
+function loadImage(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null); // a missing tile shouldn't abort the export
+    img.src = src;
+  });
+}
+
+// Lays the legend out in as many columns as needed to fit the image height,
+// truncating (with a "+N more" note) only if even that is not enough.
+function drawLegend(ctx, entries, width, height) {
+  if (entries.length === 0) return;
+
+  const pad = 12;
+  const lineH = 19;
+  const colW = 200;
+  const headerH = 22;
+  const margin = 14;
+
+  const maxBoxH = height - margin * 2;
+  const rowsPerCol = Math.max(1, Math.floor((maxBoxH - pad * 2 - headerH) / lineH));
+  const maxCols = Math.max(1, Math.min(3, Math.floor((width - margin * 2) / colW)));
+
+  let shown = entries;
+  let overflow = 0;
+  const capacity = rowsPerCol * maxCols;
+  if (entries.length > capacity) {
+    shown = entries.slice(0, capacity - 1);
+    overflow = entries.length - shown.length;
+  }
+
+  const cols = Math.min(maxCols, Math.ceil(shown.length / rowsPerCol));
+  const rows = Math.min(rowsPerCol, Math.ceil(shown.length / cols));
+  const boxW = pad * 2 + cols * colW;
+  const boxH = pad * 2 + headerH + (rows + (overflow ? 1 : 0)) * lineH;
+  const x = margin;
+  const y = height - boxH - margin;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(14, 17, 22, 0.84)";
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, boxW, boxH, 10);
+  else ctx.rect(x, y, boxW, boxH); // older browsers
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#f0a55e";
+  ctx.font = "600 14px system-ui, sans-serif";
+  ctx.fillText(`Species (${entries.length})`, x + pad, y + pad + 14);
+
+  ctx.font = "12px system-ui, sans-serif";
+  shown.forEach(([name, count], i) => {
+    const col = Math.floor(i / rows);
+    const row = i % rows;
+    const cx = x + pad + col * colW;
+    const cy = y + pad + headerH + row * lineH + 10;
+
+    ctx.fillStyle = colorForName(name);
+    ctx.beginPath();
+    ctx.arc(cx + 6, cy - 4, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = "#e6e9ef";
+    const label = name.length > 24 ? name.slice(0, 23) + "…" : name;
+    ctx.fillText(`${label} (${count})`, cx + 18, cy);
+  });
+
+  if (overflow) {
+    ctx.fillStyle = "#8b95a5";
+    ctx.fillText(`+${overflow} more species`, x + pad, y + boxH - pad - 2);
+  }
+  ctx.restore();
+}
+
+async function exportMapJpg() {
+  const btn = document.getElementById("save-jpg");
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Rendering…";
+
+  try {
+    const cfg = BASE_LAYERS[currentBase];
+    const size = map.getSize();
+    const scale = window.devicePixelRatio > 1 ? 2 : 1;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = size.x * scale;
+    canvas.height = size.y * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = cfg.background;
+    ctx.fillRect(0, 0, size.x, size.y);
+
+    // --- tiles
+    const zoom = Math.round(map.getZoom());
+    const tileSize = 256;
+    const pixelBounds = map.getPixelBounds();
+    const min = pixelBounds.min.divideBy(tileSize).floor();
+    const max = pixelBounds.max.divideBy(tileSize).floor();
+    const maxIndex = Math.pow(2, zoom);
+
+    const jobs = [];
+    for (let x = min.x; x <= max.x; x++) {
+      for (let y = min.y; y <= max.y; y++) {
+        if (y < 0 || y >= maxIndex) continue;
+        const wrappedX = ((x % maxIndex) + maxIndex) % maxIndex;
+        jobs.push(
+          loadImage(tileUrl(cfg, wrappedX, y, zoom)).then((img) => ({
+            img,
+            px: x * tileSize - pixelBounds.min.x,
+            py: y * tileSize - pixelBounds.min.y,
+          }))
+        );
+      }
+    }
+
+    const tiles = await Promise.all(jobs);
+    let drawn = 0;
+    for (const t of tiles) {
+      if (!t.img) continue;
+      ctx.drawImage(t.img, t.px, t.py, tileSize, tileSize);
+      drawn++;
+    }
+    if (drawn === 0) throw new Error("no map tiles could be loaded");
+
+    // --- markers (only what is currently shown)
+    const counts = new Map();
+    markerLayer.eachLayer((layer) => {
+      const ll = layer.getLatLng();
+      const p = map.latLngToContainerPoint(ll);
+      const fill = layer.options.fillColor;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.strokeStyle = "#f2f5fa";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
+
+    // legend entries come from the current (filtered) list
+    for (const m of currentList) {
+      counts.set(m.name, (counts.get(m.name) || 0) + 1);
+    }
+    const entries = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    drawLegend(ctx, entries, size.x, size.y);
+
+    // --- title + attribution
+    ctx.font = "600 15px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.strokeStyle = "rgba(0,0,0,0.6)";
+    ctx.lineWidth = 3;
+    const title = "🍄 Mushroom Map";
+    ctx.strokeText(title, 14, 26);
+    ctx.fillText(title, 14, 26);
+
+    ctx.font = "11px system-ui, sans-serif";
+    const credit = cfg.credit;
+    const w = ctx.measureText(credit).width;
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(size.x - w - 14, size.y - 20, w + 12, 16);
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillText(credit, size.x - w - 8, size.y - 8);
+
+    // --- download
+    const blob = await new Promise((res) =>
+      canvas.toBlob(res, "image/jpeg", 0.92)
+    );
+    if (!blob) throw new Error("could not encode the image");
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mushroom-map-${new Date().toISOString().slice(0, 10)}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+    btn.textContent = "✓ Saved";
+  } catch (err) {
+    console.error(err);
+    btn.textContent = "⚠ Failed";
+    alert(
+      "Could not save the map image.\n\n" +
+        err.message +
+        "\n\nThis usually means the tile server blocked cross-origin access."
+    );
+  } finally {
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.disabled = false;
+    }, 1800);
+  }
+}
+
+document.getElementById("save-jpg").onclick = exportMapJpg;
 
 // --- helpers -------------------------------------------------------------
 function escapeHtml(s) {

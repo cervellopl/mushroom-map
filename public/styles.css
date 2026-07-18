@@ -24,7 +24,68 @@ html, body {
   display: grid;
   grid-template-columns: 340px 1fr;
   height: 100vh;
+  position: relative;
+  transition: grid-template-columns 0.2s ease;
 }
+/* Hiding the sidebar removes it from the grid, so the map must become the only
+   column — otherwise it lands in the (zero-width) first column and vanishes. */
+#app.collapsed { grid-template-columns: 1fr; }
+#app.collapsed #sidebar { display: none; }
+
+/* --- floating map controls --- */
+#sidebar-show,
+#map-controls {
+  position: absolute;
+  top: 12px;
+  z-index: 900;
+}
+#sidebar-show {
+  /* clear of Leaflet's zoom control, which also sits top-left */
+  left: 56px;
+  z-index: 1000;
+  display: none;
+  padding: 7px 11px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+#sidebar-show:hover { background: var(--panel-2); }
+#app.collapsed #sidebar-show { display: block; }
+
+#map-controls {
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+#map-controls button {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 500;
+  padding: 7px 11px;
+  font-size: 0.8rem;
+}
+#map-controls button:hover { background: var(--panel-2); }
+
+.seg { display: flex; }
+.seg button { border-radius: 0; }
+.seg button:first-child { border-radius: 8px 0 0 8px; }
+.seg button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+.seg button.active {
+  background: var(--accent);
+  color: #1a1005;
+  border-color: var(--accent);
+}
+.seg button.active:hover { background: var(--accent-2); }
+
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.title-row h1 { margin: 0; }
 
 /* --- sidebar --- */
 #sidebar {
