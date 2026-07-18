@@ -19,5 +19,13 @@ return {
 	-- Adds a settings panel to File > Plug-in Manager.
 	LrPluginInfoProvider = 'PluginInfoProvider.lua',
 
-	VERSION = { major = 2, minor = 4, revision = 0, build = 0 },
+	-- Library > Plug-in Extras
+	LrLibraryMenuItems = {
+		{
+			title = 'Sync collections to Mushroom Map…',
+			file = 'SyncCollections.lua',
+		},
+	},
+
+	VERSION = { major = 3, minor = 0, revision = 0, build = 0 },
 }

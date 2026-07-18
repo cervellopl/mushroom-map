@@ -11,6 +11,7 @@ local LrPrefs = import 'LrPrefs'
 local LrDialogs = import 'LrDialogs'
 local LrStringUtils = import 'LrStringUtils'
 local LrTasks = import 'LrTasks'
+local LrFileUtils = import 'LrFileUtils'
 
 local Common = {}
 
@@ -55,6 +56,45 @@ function Common.buildHeaders(user, pass)
 		table.insert(headers, { field = 'Authorization', value = 'Basic ' .. cred })
 	end
 	return headers
+end
+
+--- Upload one rendered JPEG as a sighting.
+--- opts: apiUrl, user, pass, name, lat, lng, notes, filePath
+--- Returns ok (boolean), message (string when it failed).
+function Common.uploadImage(opts)
+	local data = LrFileUtils.readFile(opts.filePath)
+	if not data or #data == 0 then
+		return false, 'could not read rendered file'
+	end
+
+	local query = { 'name=' .. Common.urlEncode(opts.name) }
+	if opts.lat and opts.lng then
+		query[#query + 1] = 'lat=' .. Common.urlEncode(tostring(opts.lat))
+		query[#query + 1] = 'lng=' .. Common.urlEncode(tostring(opts.lng))
+	end
+	if opts.notes and opts.notes ~= '' then
+		query[#query + 1] = 'notes=' .. Common.urlEncode(opts.notes)
+	end
+
+	local url = Common.normalizeUrl(opts.apiUrl) ..
+		'/api/mushrooms/raw?' .. table.concat(query, '&')
+
+	local headers = Common.buildHeaders(opts.user, opts.pass)
+	headers[#headers + 1] = { field = 'Content-Type', value = 'image/jpeg' }
+
+	local body, respHeaders = LrHttp.post(url, data, headers)
+	local status = respHeaders and respHeaders.status
+	local netError = respHeaders and respHeaders.error
+
+	if netError then
+		return false, 'network error (' ..
+			tostring(netError.name or netError.errorCode or 'unknown') .. ')'
+	end
+	if status and status >= 200 and status < 300 then
+		return true
+	end
+	return false, string.format('HTTP %s %s',
+		tostring(status or '?'), tostring(body or ''):sub(1, 120))
 end
 
 --- Ping the API and report the outcome in a dialog. Safe to call from a UI

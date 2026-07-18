@@ -82,6 +82,31 @@ them in the Export dialog updates them here too.
 
 ---
 
+## Syncing whole collections
+
+**Library ▸ Plug-in Extras ▸ Sync collections to Mushroom Map…**
+
+Organise photos into one collection per species (named with the Latin name),
+then sync them in bulk instead of exporting by hand:
+
+1. The dialog lists every collection with its photo count and how many are new.
+2. Tick the collections you want (**Select all** / **Select none** help).
+3. Click **Sync**. Each sighting is named after **its own collection**, so a
+   multi-collection sync labels everything correctly in one pass.
+
+Photos uploaded by an earlier sync are **skipped**, so re-running only sends
+what's new and never creates duplicates. The history is stored in the plugin's
+preferences (by catalog photo id), so it is per-machine. **Reset sync history**
+clears it and makes the next sync re-upload everything.
+
+Notes:
+- A photo in several selected collections is uploaded **once**, named after
+  whichever of those collections is synced first (alphabetically by path).
+- Only photos that upload successfully are recorded as synced, so a failed
+  photo is retried on the next run.
+- GPS comes from the catalog and the Caption becomes the sighting's notes,
+  exactly as in the export path.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
@@ -109,7 +134,8 @@ Runtime errors are logged to `Documents\LrClassicLogs\MushroomMap.log`.
 ```
 MushroomMap.lrplugin/
   Info.lua                    plugin manifest
-  MushroomMapCommon.lua       shared settings, auth headers, connection test
+  MushroomMapCommon.lua       shared settings, auth headers, upload, connection test
   PluginInfoProvider.lua      Plug-in Manager settings panel
   ExportServiceProvider.lua   export dialog UI + upload/archive logic
+  SyncCollections.lua         bulk collection sync with duplicate skipping
 ```
