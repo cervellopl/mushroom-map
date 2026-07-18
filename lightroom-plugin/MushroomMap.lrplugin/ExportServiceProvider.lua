@@ -36,6 +36,9 @@ local Common = require 'MushroomMapCommon'
 local logger = LrLogger('MushroomMap')
 logger:enable('logfile') -- writes to Documents/LrClassicLogs/MushroomMap.log
 
+-- Forward declarations so the dialog's buttons can call helpers defined below.
+local collectionNameFor, folderNameFor, resolveName, previewNames
+
 --============================================================================
 local exportServiceProvider = {}
 
@@ -162,6 +165,16 @@ function exportServiceProvider.sectionsForTopOfDialog(f, propertyTable)
 					value = bind 'sendGps',
 				},
 			},
+			f:row {
+				f:push_button {
+					title = 'Preview names',
+					action = function() previewNames(propertyTable) end,
+				},
+				f:static_text {
+					title = 'Shows what the plugin reads from the selected photos.',
+					text_color = import('LrColor')(0.5, 0.5, 0.5),
+				},
+			},
 		},
 
 		{
@@ -204,7 +217,7 @@ end
 --- Name of the first collection containing this photo ('' if none).
 -- getContainedCollections() reads the catalog, so it must run inside
 -- withReadAccessDo() — otherwise it throws and we silently end up with no name.
-local function collectionNameFor(photo)
+function collectionNameFor(photo)
 	local result = ''
 	local ok, err = pcall(function()
 		LrApplication.activeCatalog():withReadAccessDo(function()
@@ -227,7 +240,7 @@ local function collectionNameFor(photo)
 end
 
 --- Name of the folder the photo file lives in ('' if unavailable).
-local function folderNameFor(photo)
+function folderNameFor(photo)
 	local ok, name = pcall(function()
 		local filePath = photo:getRawMetadata('path')
 		if not filePath or filePath == '' then return '' end
@@ -239,7 +252,7 @@ end
 --- Resolve the mushroom Latin name for a photo, per the configured source.
 -- Falls back to the default name, then 'Unknown'. Each resolution is logged so
 -- an unexpected 'Unknown' can be traced in MushroomMap.log.
-local function resolveName(photo, settings)
+function resolveName(photo, settings)
 	local source = settings.nameSource or 'collection'
 	local value = ''
 
@@ -265,6 +278,52 @@ local function resolveName(photo, settings)
 
 	logger:info(string.format('name "%s" resolved from %s', value, resolvedFrom))
 	return value
+end
+
+--- Diagnostic: report what the plugin actually reads from the selected photos.
+-- Answers "why did this upload as Unknown?" without guesswork.
+function previewNames(settings)
+	local LrTasks = import 'LrTasks'
+	LrTasks.startAsyncTask(function()
+		local catalog = LrApplication.activeCatalog()
+		local photos = catalog:getTargetPhotos()
+
+		if not photos or #photos == 0 then
+			LrDialogs.message('Mushroom Map — name preview',
+				'No photos are selected. Select some in the Library and try again.', 'warning')
+			return
+		end
+
+		local lines = {}
+		local limit = math.min(#photos, 10)
+
+		for i = 1, limit do
+			local photo = photos[i]
+			local filename = photo:getFormattedMetadata('fileName') or '(unnamed)'
+
+			-- Collect every candidate, so we can see which are actually populated.
+			local collections = collectionNameFor(photo)
+			local folder = folderNameFor(photo)
+			local title = photo:getFormattedMetadata('title') or ''
+			local caption = photo:getFormattedMetadata('caption') or ''
+			local resolved = resolveName(photo, settings)
+
+			local function show(v) return (v ~= nil and v ~= '') and v or '(empty)' end
+
+			lines[#lines + 1] = string.format(
+				'%s\n    collection: %s\n    folder: %s\n    title: %s\n    caption: %s\n    -> would upload as: %s',
+				filename, show(collections), show(folder), show(title), show(caption), resolved)
+		end
+
+		if #photos > limit then
+			lines[#lines + 1] = string.format('... and %d more', #photos - limit)
+		end
+
+		LrDialogs.message(
+			string.format('Mushroom Map — name preview (source: %s)',
+				tostring(settings.nameSource or 'collection')),
+			table.concat(lines, '\n\n'), 'info')
+	end)
 end
 
 -- Avoid clobbering an existing file in the sent folder.
