@@ -29,6 +29,7 @@ local LrStringUtils = import 'LrStringUtils'
 local LrView = import 'LrView'
 local LrErrors = import 'LrErrors'
 local LrLogger = import 'LrLogger'
+local LrApplication = import 'LrApplication'
 
 local Common = require 'MushroomMapCommon'
 
@@ -138,6 +139,7 @@ function exportServiceProvider.sectionsForTopOfDialog(f, propertyTable)
 					value = bind 'nameSource',
 					items = {
 						{ title = "Collection name (the photo's collection)", value = 'collection' },
+						{ title = 'Folder name (the folder on disk)', value = 'folder' },
 						{ title = 'Title metadata field', value = 'title' },
 						{ title = 'Caption metadata field', value = 'caption' },
 						{ title = 'Always use the default name below', value = 'default' },
@@ -200,32 +202,68 @@ end
 --============================================================================
 
 --- Name of the first collection containing this photo ('' if none).
--- Smart collections are included; Lightroom returns them from the same call.
+-- getContainedCollections() reads the catalog, so it must run inside
+-- withReadAccessDo() — otherwise it throws and we silently end up with no name.
 local function collectionNameFor(photo)
-	local ok, collections = pcall(function() return photo:getContainedCollections() end)
-	if not ok or not collections then return '' end
-	for _, collection in ipairs(collections) do
-		local gotName, name = pcall(function() return collection:getName() end)
-		if gotName and name and name ~= '' then return name end
+	local result = ''
+	local ok, err = pcall(function()
+		LrApplication.activeCatalog():withReadAccessDo(function()
+			local collections = photo:getContainedCollections()
+			if collections then
+				for _, collection in ipairs(collections) do
+					local name = collection:getName()
+					if name and name ~= '' then
+						result = name
+						return
+					end
+				end
+			end
+		end, { timeout = 10 })
+	end)
+	if not ok then
+		logger:warn('collection lookup failed: ' .. tostring(err))
 	end
-	return ''
+	return result
+end
+
+--- Name of the folder the photo file lives in ('' if unavailable).
+local function folderNameFor(photo)
+	local ok, name = pcall(function()
+		local filePath = photo:getRawMetadata('path')
+		if not filePath or filePath == '' then return '' end
+		return LrPathUtils.leafName(LrPathUtils.parent(filePath))
+	end)
+	return (ok and name) or ''
 end
 
 --- Resolve the mushroom Latin name for a photo, per the configured source.
+-- Falls back to the default name, then 'Unknown'. Each resolution is logged so
+-- an unexpected 'Unknown' can be traced in MushroomMap.log.
 local function resolveName(photo, settings)
 	local source = settings.nameSource or 'collection'
 	local value = ''
 
 	if source == 'collection' then
 		value = collectionNameFor(photo)
+	elseif source == 'folder' then
+		value = folderNameFor(photo)
 	elseif source == 'title' then
 		value = photo:getFormattedMetadata('title') or ''
 	elseif source == 'caption' then
 		value = photo:getFormattedMetadata('caption') or ''
 	end
 
-	if value == nil or value == '' then value = settings.defaultName or '' end
-	if value == '' then value = 'Unknown' end
+	local resolvedFrom = source
+	if value == nil or value == '' then
+		value = settings.defaultName or ''
+		resolvedFrom = 'default name'
+	end
+	if value == '' then
+		value = 'Unknown'
+		resolvedFrom = 'fallback (source and default both empty)'
+	end
+
+	logger:info(string.format('name "%s" resolved from %s', value, resolvedFrom))
 	return value
 end
 
@@ -265,8 +303,16 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 	-- Connection: close so each upload uses a fresh socket.
 	local headers = Common.buildHeaders(exportSettings.authUser, exportSettings.authPass)
 
-	local uploaded, failed = 0, 0
+	local uploaded, failed, unnamed = 0, 0, 0
 	local failures = {}
+
+	local SOURCE_LABEL = {
+		collection = 'Collection name',
+		folder = 'Folder name',
+		title = 'Title',
+		caption = 'Caption',
+		default = 'the default name',
+	}
 
 	for _i, rendition in exportContext:renditions { stopIfCanceled = true } do
 		-- waitForRender() completes the rendition; do NOT also call
@@ -321,6 +367,7 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 				logger:error('Network error uploading ' .. name .. ': ' .. tostring(netError.name))
 			elseif status and status >= 200 and status < 300 then
 				uploaded = uploaded + 1
+				if name == 'Unknown' then unnamed = unnamed + 1 end
 
 				-- Archive to the local "sent" folder.
 				local sent = exportSettings.sentFolder
@@ -354,10 +401,22 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 	end
 
 	-- Summary
+	local nameHint = ''
+	if unnamed > 0 then
+		nameHint = string.format(
+			'\n\n%d photo%s had no name and was uploaded as "Unknown".\n' ..
+			'"Latin name from" is set to %s, which is empty for %s.\n' ..
+			'Pick a different source in the export dialog, or set a Default name.',
+			unnamed, unnamed == 1 and '' or 's',
+			SOURCE_LABEL[exportSettings.nameSource or 'collection'] or tostring(exportSettings.nameSource),
+			unnamed == 1 and 'that photo' or 'those photos')
+	end
+
 	if failed == 0 then
 		LrDialogs.message('Mushroom Map',
-			string.format('Uploaded %d photo%s successfully.', uploaded, uploaded == 1 and '' or 's'),
-			'info')
+			string.format('Uploaded %d photo%s successfully.', uploaded, uploaded == 1 and '' or 's')
+				.. nameHint,
+			unnamed > 0 and 'warning' or 'info')
 	else
 		LrDialogs.message('Mushroom Map',
 			string.format('Uploaded %d, failed %d.', uploaded, failed),
