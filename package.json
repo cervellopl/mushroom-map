@@ -2,6 +2,7 @@
   "name": "mushroom-map-api",
   "version": "1.0.0",
   "description": "API and dark-themed map frontend for logging mushroom sightings with images, location, and name.",
+  "license": "MIT",
   "type": "module",
   "main": "server.js",
   "scripts": {
