@@ -19,5 +19,5 @@ return {
 	-- Adds a settings panel to File > Plug-in Manager.
 	LrPluginInfoProvider = 'PluginInfoProvider.lua',
 
-	VERSION = { major = 2, minor = 3, revision = 0, build = 0 },
+	VERSION = { major = 2, minor = 4, revision = 0, build = 0 },
 }

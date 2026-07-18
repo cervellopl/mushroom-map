@@ -30,6 +30,7 @@ local LrView = import 'LrView'
 local LrErrors = import 'LrErrors'
 local LrLogger = import 'LrLogger'
 local LrApplication = import 'LrApplication'
+local LrTasks = import 'LrTasks'
 
 local Common = require 'MushroomMapCommon'
 
@@ -218,11 +219,16 @@ end
 -- getContainedCollections() reads the catalog, so it must run inside
 -- withReadAccessDo() — otherwise it throws and we silently end up with no name.
 -- Both lookups below read the catalog, so they must run inside
--- withReadAccessDo(). Each returns (value, errorText) — the caller can then
--- distinguish "genuinely empty" from "the call failed", which a bare pcall hid.
+-- withReadAccessDo(). Each returns (value, errorText) so the caller can tell
+-- "genuinely empty" apart from "the call failed".
+--
+-- Use LrTasks.pcall, NOT the standard pcall: withReadAccessDo yields, and
+-- Lightroom's Lua 5.1 cannot yield across a plain pcall — doing so fails with
+-- "Yielding is not allowed within a C or metamethod call", which is what made
+-- every name resolve to Unknown.
 function collectionNameFor(photo)
 	local result, errText = '', nil
-	local ok, err = pcall(function()
+	local ok, err = LrTasks.pcall(function()
 		LrApplication.activeCatalog():withReadAccessDo(function()
 			local collections = photo:getContainedCollections()
 			if collections then
@@ -246,7 +252,7 @@ end
 --- Name of the folder the photo file lives in ('' if unavailable).
 function folderNameFor(photo)
 	local result, errText = '', nil
-	local ok, err = pcall(function()
+	local ok, err = LrTasks.pcall(function()
 		LrApplication.activeCatalog():withReadAccessDo(function()
 			local filePath = photo:getRawMetadata('path')
 			if filePath and filePath ~= '' then
@@ -295,7 +301,6 @@ end
 --- Diagnostic: report what the plugin actually reads from the selected photos.
 -- Answers "why did this upload as Unknown?" without guesswork.
 function previewNames(settings)
-	local LrTasks = import 'LrTasks'
 	LrTasks.startAsyncTask(function()
 		local catalog = LrApplication.activeCatalog()
 		local photos = catalog:getTargetPhotos()
@@ -447,7 +452,7 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 				-- Archive to the local "sent" folder.
 				local sent = exportSettings.sentFolder
 				if sent and sent ~= '' then
-					local ok, err = pcall(function()
+					local ok, err = LrTasks.pcall(function()
 						LrFileUtils.createAllDirectories(sent)
 						local dest = uniqueDestination(sent, LrPathUtils.leafName(pathOrMessage))
 						LrFileUtils.copy(pathOrMessage, dest)
@@ -471,7 +476,7 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 		-- Clean up the temporary rendition (we keep our own copy in the sent
 		-- folder). Guarded so a locked file can't abort the whole batch.
 		if success and pathOrMessage then
-			pcall(function() LrFileUtils.delete(pathOrMessage) end)
+			LrTasks.pcall(function() LrFileUtils.delete(pathOrMessage) end)
 		end
 	end
 
