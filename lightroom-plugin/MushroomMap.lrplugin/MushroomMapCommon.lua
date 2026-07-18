@@ -37,6 +37,10 @@ function Common.buildHeaders(user, pass)
 	local headers = {
 		-- Harmless when not behind ngrok; skips ngrok's browser interstitial.
 		{ field = 'ngrok-skip-browser-warning', value = '1' },
+		-- Use a fresh connection per upload. Reusing a keep-alive socket that
+		-- the server has since closed surfaces as "connection reset" and made
+		-- multi-photo batches fail after the first photo.
+		{ field = 'Connection', value = 'close' },
 	}
 	if user and user ~= '' then
 		local cred = LrStringUtils.encodeBase64(user .. ':' .. (pass or ''))

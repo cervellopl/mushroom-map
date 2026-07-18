@@ -254,17 +254,11 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 			or 'Uploading one photo to Mushroom Map',
 	}
 
-	local apiUrl = (exportSettings.apiUrl or ''):gsub('/+$', '') -- trim trailing slash
-	local endpoint = apiUrl .. '/api/mushrooms'
+	local endpoint = Common.normalizeUrl(exportSettings.apiUrl) .. '/api/mushrooms'
 
-	-- Shared request headers.
-	local headers = {
-		{ field = 'ngrok-skip-browser-warning', value = '1' }, -- harmless if not using ngrok
-	}
-	if exportSettings.authUser and exportSettings.authUser ~= '' then
-		local cred = LrStringUtils.encodeBase64(exportSettings.authUser .. ':' .. (exportSettings.authPass or ''))
-		table.insert(headers, { field = 'Authorization', value = 'Basic ' .. cred })
-	end
+	-- Same headers as the connection test: ngrok bypass, Basic Auth, and
+	-- Connection: close so each upload uses a fresh socket.
+	local headers = Common.buildHeaders(exportSettings.authUser, exportSettings.authPass)
 
 	local uploaded, failed = 0, 0
 	local failures = {}

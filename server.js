@@ -84,6 +84,36 @@ async function extractExif(input) {
 
 const app = express();
 
+// --- request logging -----------------------------------------------------
+// Records every request (and any that abort or close early) to data/access.log,
+// which makes client-side "connection reset" reports diagnosable.
+const LOG_FILE = path.join(DATA_DIR, "access.log");
+function logLine(line) {
+  const entry = `${new Date().toISOString()} ${line}\n`;
+  fs.appendFile(LOG_FILE, entry, () => {});
+  console.log(entry.trimEnd());
+}
+
+app.use((req, res, next) => {
+  const started = Date.now();
+  const declared = req.headers["content-length"] || "-";
+  const agent = req.headers["user-agent"] || "-";
+
+  req.on("aborted", () =>
+    logLine(
+      `ABORTED  ${req.method} ${req.url} after ${Date.now() - started}ms ` +
+        `declared=${declared} ua="${agent}"`
+    )
+  );
+  res.on("finish", () =>
+    logLine(
+      `${res.statusCode}      ${req.method} ${req.url} ${Date.now() - started}ms ` +
+        `in=${declared} ua="${agent}"`
+    )
+  );
+  next();
+});
+
 // --- optional HTTP Basic Auth -------------------------------------------
 // Enabled only when both AUTH_USER and AUTH_PASS are set, so local dev stays
 // frictionless while a publicly exposed instance can require credentials.
@@ -226,7 +256,7 @@ app.use((err, _req, res, _next) => {
   res.status(400).json({ error: err.message });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🍄 Mushroom Map running at http://localhost:${PORT}`);
   console.log(
     authEnabled
@@ -234,3 +264,18 @@ app.listen(PORT, () => {
       : "🔓 Basic auth disabled (set AUTH_USER and AUTH_PASS to enable)"
   );
 });
+
+// Socket-level failures never reach the Express middleware, so log them here —
+// this is what a client reports as "connection reset".
+server.on("clientError", (err, socket) => {
+  logLine(`CLIENT-ERROR ${err.code || ""} ${err.message}`);
+  if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+});
+server.on("connection", (socket) => {
+  socket.on("error", (err) => logLine(`SOCKET-ERROR ${err.code || err.message}`));
+});
+
+// Be generous with idle connections so a client reusing a keep-alive socket
+// between photo renders doesn't hit a server-closed connection.
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 70000;
