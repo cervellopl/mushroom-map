@@ -4,12 +4,17 @@
   Uploads each rendered photo to the Mushroom Map API and archives a copy to a
   local "sent" folder.
 
-  Field mapping (Mushroom Map API `POST /api/mushrooms`, multipart/form-data):
-    name   <- the mushroom Latin name (the photo's Title, else the dialog default)
+  Uploads use `POST /api/mushrooms/raw`: metadata in the query string, the
+  rendered JPEG as the raw request body. LrHttp.postMultipart declares a
+  Content-Length shorter than it actually writes, and the surplus bytes corrupt
+  the keep-alive connection so only the first photo of a batch succeeds.
+
+  Field mapping:
+    name   <- the mushroom Latin name (collection name by default)
     lat    <- catalog GPS latitude   (if present and "Send GPS" is on)
     lng    <- catalog GPS longitude
     notes  <- the photo's Caption    (if present)
-    image  <- the rendered JPEG
+    body   <- the rendered JPEG
 
   The capture timestamp is not sent explicitly: the API reads it from the
   rendered JPEG's EXIF, provided Lightroom's export keeps metadata (do not tick
@@ -254,7 +259,7 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 			or 'Uploading one photo to Mushroom Map',
 	}
 
-	local endpoint = Common.normalizeUrl(exportSettings.apiUrl) .. '/api/mushrooms'
+	local endpoint = Common.normalizeUrl(exportSettings.apiUrl) .. '/api/mushrooms/raw'
 
 	-- Same headers as the connection test: ngrok bypass, Basic Auth, and
 	-- Connection: close so each upload uses a fresh socket.
@@ -275,33 +280,37 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 			local photo = rendition.photo
 			local name = resolveName(photo, exportSettings)
 
-			-- multipart body
-			local mimeChunks = {
-				{ name = 'name', value = name },
-			}
+			-- Metadata travels in the query string; the body is the raw JPEG.
+			-- (LrHttp.postMultipart under-declares Content-Length, which
+			-- corrupts the connection and breaks every photo after the first.)
+			local query = { 'name=' .. Common.urlEncode(name) }
 
 			if exportSettings.sendGps then
 				local gps = photo:getRawMetadata('gps')
 				if gps and gps.latitude and gps.longitude then
-					table.insert(mimeChunks, { name = 'lat', value = tostring(gps.latitude) })
-					table.insert(mimeChunks, { name = 'lng', value = tostring(gps.longitude) })
+					query[#query + 1] = 'lat=' .. Common.urlEncode(tostring(gps.latitude))
+					query[#query + 1] = 'lng=' .. Common.urlEncode(tostring(gps.longitude))
 				end
 			end
 
 			local caption = photo:getFormattedMetadata('caption')
 			if caption and caption ~= '' then
-				table.insert(mimeChunks, { name = 'notes', value = caption })
+				query[#query + 1] = 'notes=' .. Common.urlEncode(caption)
 			end
 
-			table.insert(mimeChunks, {
-				name = 'image',
-				fileName = LrPathUtils.leafName(pathOrMessage),
-				filePath = pathOrMessage,
-				contentType = 'image/jpeg',
-			})
+			local imageData = LrFileUtils.readFile(pathOrMessage)
+			local body, respHeaders
 
-			-- send
-			local body, respHeaders = LrHttp.postMultipart(endpoint, mimeChunks, headers)
+			if not imageData or #imageData == 0 then
+				respHeaders = { error = { name = 'could not read rendered file' } }
+			else
+				local url = endpoint .. '?' .. table.concat(query, '&')
+				local postHeaders = {}
+				for _, h in ipairs(headers) do postHeaders[#postHeaders + 1] = h end
+				postHeaders[#postHeaders + 1] = { field = 'Content-Type', value = 'image/jpeg' }
+				body, respHeaders = LrHttp.post(url, imageData, postHeaders)
+			end
+
 			local status = respHeaders and respHeaders.status
 			local netError = respHeaders and respHeaders.error
 

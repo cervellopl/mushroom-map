@@ -32,6 +32,14 @@ function Common.normalizeUrl(url)
 	return (tostring(url or ''):gsub('%s+', ''):gsub('/+$', ''))
 end
 
+--- Percent-encode a value for use in a query string. Operates byte-wise, so
+--- UTF-8 (e.g. Polish diacritics in a collection name) survives intact.
+function Common.urlEncode(s)
+	return (tostring(s or ''):gsub('[^%w%-%._~]', function(c)
+		return string.format('%%%02X', string.byte(c))
+	end))
+end
+
 --- Build request headers, including Basic Auth when a username is set.
 function Common.buildHeaders(user, pass)
 	local headers = {

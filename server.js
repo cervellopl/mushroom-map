@@ -154,23 +154,22 @@ app.post("/api/exif", memUpload.single("image"), async (req, res) => {
   res.json({ hasLocation: !!gps, ...(gps || {}), takenAt });
 });
 
-// Create a mushroom sighting (multipart/form-data with an "image" file).
-app.post("/api/mushrooms", upload.single("image"), async (req, res) => {
-  const { name, notes } = req.body;
-  let latNum = Number(req.body.lat);
-  let lngNum = Number(req.body.lng);
+// Shared by both upload endpoints: validate, fill gaps from EXIF, persist.
+// `savedFilename` is a file already written into UPLOAD_DIR (or null).
+async function createSighting({ name, lat, lng, notes, savedFilename }) {
+  let latNum = Number(lat);
+  let lngNum = Number(lng);
 
-  if (!name || !name.trim()) {
-    return res.status(400).json({ error: "name is required" });
+  if (!name || !String(name).trim()) {
+    return { error: "name is required" };
   }
 
   // Read EXIF once for both a coordinate fallback and the capture timestamp.
   let locationSource = "manual";
   let takenAt = null;
-  const missingCoords =
-    !Number.isFinite(latNum) || !Number.isFinite(lngNum);
-  if (req.file) {
-    const exif = await extractExif(req.file.path);
+  const missingCoords = !Number.isFinite(latNum) || !Number.isFinite(lngNum);
+  if (savedFilename) {
+    const exif = await extractExif(path.join(UPLOAD_DIR, savedFilename));
     takenAt = exif.takenAt;
     if (missingCoords && exif.gps) {
       latNum = exif.gps.lat;
@@ -180,23 +179,19 @@ app.post("/api/mushrooms", upload.single("image"), async (req, res) => {
   }
 
   if (!Number.isFinite(latNum) || latNum < -90 || latNum > 90) {
-    return res
-      .status(400)
-      .json({ error: "valid lat (-90..90) is required (none found in photo)" });
+    return { error: "valid lat (-90..90) is required (none found in photo)" };
   }
   if (!Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
-    return res
-      .status(400)
-      .json({ error: "valid lng (-180..180) is required (none found in photo)" });
+    return { error: "valid lng (-180..180) is required (none found in photo)" };
   }
 
   const record = {
     id: randomUUID(),
-    name: name.trim(),
+    name: String(name).trim(),
     lat: latNum,
     lng: lngNum,
-    notes: (notes || "").trim(),
-    imageUrl: req.file ? `/uploads/${req.file.filename}` : null,
+    notes: String(notes || "").trim(),
+    imageUrl: savedFilename ? `/uploads/${savedFilename}` : null,
     locationSource,
     takenAt, // capture time from photo EXIF, or null
     createdAt: new Date().toISOString(),
@@ -205,9 +200,63 @@ app.post("/api/mushrooms", upload.single("image"), async (req, res) => {
   const records = readAll();
   records.push(record);
   writeAll(records);
+  return { record };
+}
 
+// Create a mushroom sighting (multipart/form-data with an "image" file).
+app.post("/api/mushrooms", upload.single("image"), async (req, res) => {
+  const { name, notes, lat, lng } = req.body;
+  const { record, error } = await createSighting({
+    name,
+    lat,
+    lng,
+    notes,
+    savedFilename: req.file ? req.file.filename : null,
+  });
+  if (error) return res.status(400).json({ error });
   res.status(201).json(record);
 });
+
+// Create a sighting from a RAW image body, with metadata in the query string.
+//
+// Lightroom's LrHttp.postMultipart declares a Content-Length shorter than the
+// bytes it actually writes; the surplus poisons the keep-alive connection, so
+// only the first photo of a batch succeeds. Posting the JPEG as the raw body
+// sidesteps that encoder entirely — the length is simply the file size.
+//
+//   POST /api/mushrooms/raw?name=..&lat=..&lng=..&notes=..
+//   Content-Type: image/jpeg   (body = the JPEG bytes)
+app.post(
+  "/api/mushrooms/raw",
+  express.raw({ type: () => true, limit: "25mb" }),
+  async (req, res) => {
+    if (!req.body || !req.body.length) {
+      return res.status(400).json({ error: "raw image body is required" });
+    }
+
+    const filename = `${Date.now()}-${randomUUID()}.jpg`;
+    try {
+      fs.writeFileSync(path.join(UPLOAD_DIR, filename), req.body);
+    } catch (err) {
+      return res.status(500).json({ error: "could not store image" });
+    }
+
+    const { name, lat, lng, notes } = req.query;
+    const { record, error } = await createSighting({
+      name,
+      lat,
+      lng,
+      notes,
+      savedFilename: filename,
+    });
+
+    if (error) {
+      fs.rm(path.join(UPLOAD_DIR, filename), { force: true }, () => {});
+      return res.status(400).json({ error });
+    }
+    res.status(201).json(record);
+  }
+);
 
 // List sightings, optionally filtered by name (case-insensitive substring).
 app.get("/api/mushrooms", (req, res) => {
