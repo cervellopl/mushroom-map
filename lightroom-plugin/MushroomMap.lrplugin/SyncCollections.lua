@@ -66,21 +66,50 @@ end
 -- Rendering + upload
 --============================================================================
 
-local EXPORT_SETTINGS = {
-	LR_format = 'JPEG',
-	LR_jpeg_quality = 0.8,
-	LR_export_colorSpace = 'sRGB',
-	LR_export_destinationType = 'tempFolder',
-	LR_collisionHandling = 'rename',
-	LR_size_doConstrain = true,
-	LR_size_resizeType = 'longEdge',
-	LR_size_units = 'pixels',
-	LR_size_maxWidth = 2400,
-	LR_size_maxHeight = 2400,
-	LR_outputSharpeningOn = false,
-	LR_removeLocationMetadata = false, -- keep GPS in the exported JPEG
-	LR_includeVideoFiles = false,
-}
+--- Renders go to a scratch folder we own; each file is deleted after upload.
+-- Lightroom requires LR_export_destinationPathPrefix even when exporting to a
+-- temporary location, so point it at an explicit directory.
+local function scratchFolder()
+	local dir = LrPathUtils.child(
+		LrPathUtils.getStandardFilePath('temp'), 'MushroomMapSync')
+	LrFileUtils.createAllDirectories(dir)
+	return dir
+end
+
+local function exportSettings()
+	return {
+		LR_format = 'JPEG',
+		LR_jpeg_quality = 0.8,
+		LR_export_colorSpace = 'sRGB',
+		LR_export_destinationType = 'specificFolder',
+		LR_export_destinationPathPrefix = scratchFolder(),
+		LR_export_useSubfolder = false,
+		LR_collisionHandling = 'rename',
+		LR_size_doConstrain = true,
+		LR_size_resizeType = 'longEdge',
+		LR_size_units = 'pixels',
+		LR_size_maxWidth = 2400,
+		LR_size_maxHeight = 2400,
+		LR_outputSharpeningOn = false,
+		LR_outputSharpeningMedia = 'screen',
+		LR_outputSharpeningLevel = 2,
+		LR_removeLocationMetadata = false, -- keep GPS in the exported JPEG
+		LR_minimizeEmbeddedMetadata = false,
+		LR_embeddedMetadataOption = 'all',
+		LR_metadata_keywordOptions = 'lightroomHierarchical',
+		LR_includeVideoFiles = false,
+		LR_includeFaceTagsInIptc = false,
+		LR_renamingTokensOn = false,
+		LR_tokens = '{{image_name}}',
+		LR_tokenCustomString = '',
+		LR_initialSequenceNumber = 1,
+		LR_useWatermark = false,
+		LR_jpeg_useLimitSize = false,
+		LR_reimportExportedPhoto = false,
+		LR_reimport_stackWithOriginal = false,
+		LR_export_bitDepth = 8,
+	}
+end
 
 --- Upload every not-yet-synced photo of one collection.
 local function syncOneCollection(entry, settings, synced, progress, stats)
@@ -106,7 +135,7 @@ local function syncOneCollection(entry, settings, synced, progress, stats)
 
 	local session = LrExportSession {
 		photosToExport = photos,
-		exportSettings = EXPORT_SETTINGS,
+		exportSettings = exportSettings(),
 	}
 
 	for _, rendition in session:renditions { stopIfCanceled = true } do
