@@ -47,7 +47,8 @@ exportServiceProvider.exportPresetFields = {
 	{ key = 'authUser',      default = '' },
 	{ key = 'authPass',      default = '' },
 	{ key = 'defaultName',   default = '' },
-	{ key = 'useTitleAsName', default = true },
+	-- Where the mushroom Latin name comes from: 'collection' | 'title' | 'caption' | 'default'
+	{ key = 'nameSource',    default = 'collection' },
 	{ key = 'sendGps',       default = true },
 	{ key = 'sentFolder',    default = [[C:\Users\macre\OneDrive\Dokumenty\lightroom ext\sent]] },
 }
@@ -127,9 +128,16 @@ function exportServiceProvider.sectionsForTopOfDialog(f, propertyTable)
 			bind_to_object = propertyTable,
 
 			f:row {
-				f:checkbox {
-					title = "Use each photo's Title as the mushroom Latin name",
-					value = bind 'useTitleAsName',
+				f:static_text { title = 'Latin name from:', alignment = 'right', width = share 'label_width' },
+				f:popup_menu {
+					value = bind 'nameSource',
+					items = {
+						{ title = "Collection name (the photo's collection)", value = 'collection' },
+						{ title = 'Title metadata field', value = 'title' },
+						{ title = 'Caption metadata field', value = 'caption' },
+						{ title = 'Always use the default name below', value = 'default' },
+					},
+					width_in_chars = 34,
 				},
 			},
 			f:row {
@@ -138,7 +146,7 @@ function exportServiceProvider.sectionsForTopOfDialog(f, propertyTable)
 					value = bind 'defaultName',
 					width_in_chars = 30,
 					immediate = true,
-					tooltip = 'Used when a photo has no Title (or the option above is off).',
+					tooltip = 'Fallback when the chosen source is empty for a photo.',
 				},
 			},
 			f:row {
@@ -186,6 +194,36 @@ end
 -- Helpers
 --============================================================================
 
+--- Name of the first collection containing this photo ('' if none).
+-- Smart collections are included; Lightroom returns them from the same call.
+local function collectionNameFor(photo)
+	local ok, collections = pcall(function() return photo:getContainedCollections() end)
+	if not ok or not collections then return '' end
+	for _, collection in ipairs(collections) do
+		local gotName, name = pcall(function() return collection:getName() end)
+		if gotName and name and name ~= '' then return name end
+	end
+	return ''
+end
+
+--- Resolve the mushroom Latin name for a photo, per the configured source.
+local function resolveName(photo, settings)
+	local source = settings.nameSource or 'collection'
+	local value = ''
+
+	if source == 'collection' then
+		value = collectionNameFor(photo)
+	elseif source == 'title' then
+		value = photo:getFormattedMetadata('title') or ''
+	elseif source == 'caption' then
+		value = photo:getFormattedMetadata('caption') or ''
+	end
+
+	if value == nil or value == '' then value = settings.defaultName or '' end
+	if value == '' then value = 'Unknown' end
+	return value
+end
+
 -- Avoid clobbering an existing file in the sent folder.
 local function uniqueDestination(folder, leafName)
 	local dest = LrPathUtils.child(folder, leafName)
@@ -231,21 +269,17 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 	local uploaded, failed = 0, 0
 	local failures = {}
 
-	for i, rendition in exportContext:renditions() do
-		if progressScope:isCanceled() then break end
-
+	for _i, rendition in exportContext:renditions { stopIfCanceled = true } do
+		-- waitForRender() completes the rendition; do NOT also call
+		-- renditionIsDone() afterwards, or the export session breaks and every
+		-- photo after the first fails to render.
 		local success, pathOrMessage = rendition:waitForRender()
+
+		if progressScope:isCanceled() then break end
 
 		if success then
 			local photo = rendition.photo
-
-			-- name = Latin name (Title, else default)
-			local name = exportSettings.defaultName or ''
-			if exportSettings.useTitleAsName then
-				local title = photo:getFormattedMetadata('title')
-				if title and title ~= '' then name = title end
-			end
-			if name == '' then name = 'Unknown' end
+			local name = resolveName(photo, exportSettings)
 
 			-- multipart body
 			local mimeChunks = {
@@ -309,8 +343,11 @@ function exportServiceProvider.processRenderedPhotos(functionContext, exportCont
 			failures[#failures + 1] = 'Render failed: ' .. tostring(pathOrMessage)
 		end
 
-		-- Let Lightroom delete the temp rendition.
-		rendition:renditionIsDone(true)
+		-- Clean up the temporary rendition (we keep our own copy in the sent
+		-- folder). Guarded so a locked file can't abort the whole batch.
+		if success and pathOrMessage then
+			pcall(function() LrFileUtils.delete(pathOrMessage) end)
+		end
 	end
 
 	-- Summary
