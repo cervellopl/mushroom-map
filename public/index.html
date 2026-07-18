@@ -20,7 +20,12 @@
         </header>
 
         <section class="panel">
-          <h2>Filter</h2>
+          <div class="panel-head">
+            <h2>Filter</h2>
+            <button id="refresh" class="ghost small" title="Reload sightings">
+              ⟳ Refresh
+            </button>
+          </div>
           <label for="filter-name">Mushroom name</label>
           <div class="filter-row">
             <input
@@ -33,6 +38,16 @@
             <button id="clear-filter" class="ghost" title="Clear">✕</button>
           </div>
           <p id="count" class="muted"></p>
+        </section>
+
+        <section class="panel" id="legend-panel" hidden>
+          <h2>Species</h2>
+          <ul id="legend" class="legend"></ul>
+        </section>
+
+        <section class="panel" id="list-panel">
+          <h2>Sightings</h2>
+          <ul id="sight-list" class="sight-list"></ul>
         </section>
 
         <section class="panel">
