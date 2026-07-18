@@ -217,8 +217,11 @@ end
 --- Name of the first collection containing this photo ('' if none).
 -- getContainedCollections() reads the catalog, so it must run inside
 -- withReadAccessDo() — otherwise it throws and we silently end up with no name.
+-- Both lookups below read the catalog, so they must run inside
+-- withReadAccessDo(). Each returns (value, errorText) — the caller can then
+-- distinguish "genuinely empty" from "the call failed", which a bare pcall hid.
 function collectionNameFor(photo)
-	local result = ''
+	local result, errText = '', nil
 	local ok, err = pcall(function()
 		LrApplication.activeCatalog():withReadAccessDo(function()
 			local collections = photo:getContainedCollections()
@@ -234,19 +237,28 @@ function collectionNameFor(photo)
 		end, { timeout = 10 })
 	end)
 	if not ok then
-		logger:warn('collection lookup failed: ' .. tostring(err))
+		errText = tostring(err)
+		logger:warn('collection lookup failed: ' .. errText)
 	end
-	return result
+	return result, errText
 end
 
 --- Name of the folder the photo file lives in ('' if unavailable).
 function folderNameFor(photo)
-	local ok, name = pcall(function()
-		local filePath = photo:getRawMetadata('path')
-		if not filePath or filePath == '' then return '' end
-		return LrPathUtils.leafName(LrPathUtils.parent(filePath))
+	local result, errText = '', nil
+	local ok, err = pcall(function()
+		LrApplication.activeCatalog():withReadAccessDo(function()
+			local filePath = photo:getRawMetadata('path')
+			if filePath and filePath ~= '' then
+				result = LrPathUtils.leafName(LrPathUtils.parent(filePath))
+			end
+		end, { timeout = 10 })
 	end)
-	return (ok and name) or ''
+	if not ok then
+		errText = tostring(err)
+		logger:warn('folder lookup failed: ' .. errText)
+	end
+	return result, errText
 end
 
 --- Resolve the mushroom Latin name for a photo, per the configured source.
@@ -302,17 +314,21 @@ function previewNames(settings)
 			local filename = photo:getFormattedMetadata('fileName') or '(unnamed)'
 
 			-- Collect every candidate, so we can see which are actually populated.
-			local collections = collectionNameFor(photo)
-			local folder = folderNameFor(photo)
+			local collections, colErr = collectionNameFor(photo)
+			local folder, folderErr = folderNameFor(photo)
 			local title = photo:getFormattedMetadata('title') or ''
 			local caption = photo:getFormattedMetadata('caption') or ''
 			local resolved = resolveName(photo, settings)
 
-			local function show(v) return (v ~= nil and v ~= '') and v or '(empty)' end
+			local function show(v, err)
+				if err then return '(FAILED: ' .. tostring(err):sub(1, 90) .. ')' end
+				return (v ~= nil and v ~= '') and v or '(empty)'
+			end
 
 			lines[#lines + 1] = string.format(
 				'%s\n    collection: %s\n    folder: %s\n    title: %s\n    caption: %s\n    -> would upload as: %s',
-				filename, show(collections), show(folder), show(title), show(caption), resolved)
+				filename, show(collections, colErr), show(folder, folderErr),
+				show(title), show(caption), resolved)
 		end
 
 		if #photos > limit then
