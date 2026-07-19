@@ -292,6 +292,12 @@ button.ghost:hover { background: var(--panel); color: var(--text); }
   width: 220px; max-width: 100%;
   border-radius: 8px; margin-top: 6px; display: block;
 }
+.popup .latin {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  margin: -2px 0 2px;
+}
 .popup .meta { color: var(--muted); font-size: 0.75rem; margin-top: 6px; }
 .popup .notes { font-size: 0.85rem; margin-top: 6px; }
 .popup .del {

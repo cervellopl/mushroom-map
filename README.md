@@ -41,6 +41,10 @@ The startup log reports whether auth is `ENABLED` or `disabled`.
   legend drawn in. Tiles are re-fetched with CORS and composited onto a canvas, so
   no screenshot tooling or external library is needed.
 - Each sighting is a 🍄 marker; click it for the photo, notes, coordinates, and a delete button.
+- **Language switch (PL / EN)** — the whole interface plus species names. In Polish,
+  each species shows its Polish common name (with the Latin name beneath it in
+  popups); typing a Polish name into the filter still finds the records, which are
+  stored under Latin names. The choice is remembered in `localStorage`.
 - **Filter** box (with autocomplete of known names) narrows the markers live.
 - **Delete buttons** — hover a row to reveal `✕`: on a **sightings list** row it removes
   that one sighting; on a **legend** row it removes the whole species group. Both ask
@@ -74,6 +78,13 @@ How it flows:
 | POST   | `/api/exif`          | Read GPS from an uploaded photo without saving it   |
 | DELETE | `/api/mushrooms/:id` | Delete a sighting and its image                      |
 | DELETE | `/api/species/:name` | Delete **every** sighting of one species (exact, case-insensitive name) |
+| GET    | `/api/species-names` | Latin → Polish name dictionary (`data/species-pl.json`) |
+
+### Polish species names
+
+`data/species-pl.json` maps Latin names to Polish common names. It is a plain
+JSON object — add or correct entries freely, no restart logic beyond reloading
+the page. Any species missing from it simply keeps showing its Latin name.
 
 ### Create fields (`multipart/form-data`)
 

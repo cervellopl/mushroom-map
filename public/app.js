@@ -1,3 +1,113 @@
+// --- language ------------------------------------------------------------
+const I18N = {
+  en: {
+    subtitle: "Log sightings & explore where mushrooms grow.",
+    filter: "Filter",
+    refresh: "⟳ Refresh",
+    refreshing: "⟳ Refreshing…",
+    mushroomName: "Mushroom name",
+    allMushrooms: "All mushrooms…",
+    species: "Species",
+    sightings: "Sightings",
+    noSightings: "No sightings yet.",
+    addSighting: "Add a sighting",
+    name: "Name",
+    photo: "Photo",
+    latitude: "Latitude",
+    longitude: "Longitude",
+    notes: "Notes",
+    notesPlaceholder: "Habitat, date, etc.",
+    namePlaceholder: "e.g. Chanterelle",
+    coordHint:
+      "Coordinates auto-fill from a geotagged photo's EXIF. Otherwise click the map to drop a pin.",
+    addBtn: "Add sighting",
+    saveJpg: "⤓ Save JPG",
+    rendering: "Rendering…",
+    saved: "✓ Saved",
+    failed: "⚠ Failed",
+    dark: "Dark",
+    satellite: "Satellite",
+    hidePanel: "Hide panel",
+    showPanel: "Show panel",
+    delete: "Delete",
+    taken: "📸 Taken",
+    logged: "Logged",
+    count: (n, q) =>
+      `${n} sighting${n === 1 ? "" : "s"}` + (q ? ` matching “${q}”` : ""),
+    confirmOne: "Delete this sighting?",
+    confirmGroup: (name, n) =>
+      `Delete the whole "${name}" group?\n\nThis permanently removes ${n} sighting${
+        n === 1 ? "" : "s"
+      } and their photos. This cannot be undone.`,
+    readingPhoto: "Reading photo location…",
+    locationRead: "read from photo",
+    noGps: "No GPS in photo — click the map to set location",
+    saving: "Saving…",
+    added: "✓ Added!",
+  },
+  pl: {
+    subtitle: "Zapisuj znaleziska i sprawdzaj, gdzie rosną grzyby.",
+    filter: "Filtr",
+    refresh: "⟳ Odśwież",
+    refreshing: "⟳ Odświeżanie…",
+    mushroomName: "Nazwa grzyba",
+    allMushrooms: "Wszystkie grzyby…",
+    species: "Gatunki",
+    sightings: "Znaleziska",
+    noSightings: "Brak znalezisk.",
+    addSighting: "Dodaj znalezisko",
+    name: "Nazwa",
+    photo: "Zdjęcie",
+    latitude: "Szerokość",
+    longitude: "Długość",
+    notes: "Notatki",
+    notesPlaceholder: "Siedlisko, data itp.",
+    namePlaceholder: "np. pieprznik jadalny",
+    coordHint:
+      "Współrzędne uzupełnią się z EXIF zdjęcia z geolokalizacją. Możesz też kliknąć mapę, aby postawić pinezkę.",
+    addBtn: "Dodaj znalezisko",
+    saveJpg: "⤓ Zapisz JPG",
+    rendering: "Renderowanie…",
+    saved: "✓ Zapisano",
+    failed: "⚠ Błąd",
+    dark: "Ciemna",
+    satellite: "Satelita",
+    hidePanel: "Ukryj panel",
+    showPanel: "Pokaż panel",
+    delete: "Usuń",
+    taken: "📸 Zrobione",
+    logged: "Dodano",
+    count: (n, q) =>
+      `${n} ${n === 1 ? "znalezisko" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? "znaleziska" : "znalezisk"}` +
+      (q ? ` dla „${q}”` : ""),
+    confirmOne: "Usunąć to znalezisko?",
+    confirmGroup: (name, n) =>
+      `Usunąć całą grupę „${name}”?\n\nTo trwale usunie ${n} znalezisk i ich zdjęcia. Tej operacji nie można cofnąć.`,
+    readingPhoto: "Odczyt lokalizacji ze zdjęcia…",
+    locationRead: "odczytano ze zdjęcia",
+    noGps: "Brak GPS w zdjęciu — kliknij mapę, aby ustawić lokalizację",
+    saving: "Zapisywanie…",
+    added: "✓ Dodano!",
+  },
+};
+
+let lang = localStorage.getItem("mm-lang") || "pl";
+const t = () => I18N[lang];
+
+// Latin -> Polish species names (loaded from the API).
+let speciesPl = {};
+let plToLatin = new Map();
+
+// What to show for a species in the current language.
+function displayName(latin) {
+  if (lang === "pl" && speciesPl[latin]) return speciesPl[latin];
+  return latin;
+}
+// True when we are showing a translated name and the Latin one is worth adding.
+function secondaryName(latin) {
+  return lang === "pl" && speciesPl[latin] ? latin : "";
+}
+
 // --- base maps -----------------------------------------------------------
 // Kept as plain config so the JPG export can re-fetch the same tiles itself.
 const BASE_LAYERS = {
@@ -200,17 +310,34 @@ function dropPin(lat, lng) {
 }
 
 // --- data loading --------------------------------------------------------
+async function loadSpeciesDictionary() {
+  try {
+    const res = await fetch("/api/species-names");
+    speciesPl = await res.json();
+  } catch {
+    speciesPl = {};
+  }
+  plToLatin = new Map(
+    Object.entries(speciesPl).map(([latin, pl]) => [pl.toLowerCase(), latin])
+  );
+}
+
 async function loadNames() {
   const res = await fetch("/api/names");
   const names = await res.json();
+  // Colours/shapes stay keyed on the Latin name, so they don't shift with
+  // the display language.
   assignStyles(names);
   nameOptions.innerHTML = names
-    .map((n) => `<option value="${escapeHtml(n)}"></option>`)
+    .map((n) => `<option value="${escapeHtml(displayName(n))}"></option>`)
     .join("");
 }
 
 async function loadMushrooms() {
-  const q = filterInput.value.trim();
+  const typed = filterInput.value.trim();
+  // Records are stored under Latin names, so a Polish search term is mapped
+  // back before querying.
+  const q = plToLatin.get(typed.toLowerCase()) || typed;
   const url = q ? `/api/mushrooms?name=${encodeURIComponent(q)}` : "/api/mushrooms";
   const res = await fetch(url);
   const list = await res.json();
@@ -220,9 +347,7 @@ async function loadMushrooms() {
   renderLegend(list);
   renderList(list);
 
-  countEl.textContent =
-    `${list.length} sighting${list.length === 1 ? "" : "s"}` +
-    (q ? ` matching “${q}”` : "");
+  countEl.textContent = t().count(list.length, typed);
 }
 
 // --- map markers ---------------------------------------------------------
@@ -255,16 +380,17 @@ function popupHtml(m) {
     : "";
   const notes = m.notes ? `<div class="notes">${escapeHtml(m.notes)}</div>` : "";
   const when = m.takenAt
-    ? `📸 Taken ${new Date(m.takenAt).toLocaleString()}`
-    : `Logged ${new Date(m.createdAt).toLocaleString()}`;
+    ? `${t().taken} ${new Date(m.takenAt).toLocaleString()}`
+    : `${t().logged} ${new Date(m.createdAt).toLocaleString()}`;
   return `
     <div class="popup">
-      <h3>${shapeSvg(m.name, 13)}${escapeHtml(m.name)}</h3>
+      <h3>${shapeSvg(m.name, 13)}${escapeHtml(displayName(m.name))}</h3>
+      ${secondaryName(m.name) ? `<div class="latin">${escapeHtml(secondaryName(m.name))}</div>` : ""}
       ${img}
       ${notes}
       <div class="meta">${m.lat.toFixed(5)}, ${m.lng.toFixed(5)}</div>
       <div class="meta">${when}</div>
-      <button class="del">Delete</button>
+      <button class="del">${t().delete}</button>
     </div>`;
 }
 
@@ -284,11 +410,11 @@ function renderLegend(list) {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(
       ([name, n]) => `
-        <li class="legend-item" data-name="${escapeHtml(name)}" data-count="${n}" title="Filter by ${escapeHtml(name)}">
+        <li class="legend-item" data-name="${escapeHtml(name)}" data-count="${n}" title="${escapeHtml(name)}">
           ${shapeSvg(name, 13)}
-          <span class="legend-name">${escapeHtml(name)}</span>
+          <span class="legend-name">${escapeHtml(displayName(name))}</span>
           <span class="badge">${n}</span>
-          <button class="row-del" title="Delete all ${n} ${escapeHtml(name)} sightings">✕</button>
+          <button class="row-del" title="${t().delete}">✕</button>
         </li>`
     )
     .join("");
@@ -307,11 +433,7 @@ function renderLegend(list) {
 
 // Delete every sighting of one species.
 async function deleteSpecies(name, count) {
-  const ok = confirm(
-    `Delete the whole "${name}" group?\n\n` +
-      `This permanently removes ${count} sighting${count === 1 ? "" : "s"} ` +
-      `and their photos. This cannot be undone.`
-  );
+  const ok = confirm(t().confirmGroup(displayName(name), count));
   if (!ok) return;
 
   const res = await fetch(`/api/species/${encodeURIComponent(name)}`, {
@@ -322,7 +444,8 @@ async function deleteSpecies(name, count) {
     alert("Could not delete: " + (data.error || res.status));
     return;
   }
-  if (filterInput.value.trim().toLowerCase() === name.trim().toLowerCase()) {
+  const shown = displayName(name).trim().toLowerCase();
+  if ([name.trim().toLowerCase(), shown].includes(filterInput.value.trim().toLowerCase())) {
     filterInput.value = ""; // the filtered species no longer exists
   }
   await refresh();
@@ -331,7 +454,7 @@ async function deleteSpecies(name, count) {
 // --- sightings list ------------------------------------------------------
 function renderList(list) {
   if (list.length === 0) {
-    listEl.innerHTML = `<li class="empty muted">No sightings yet.</li>`;
+    listEl.innerHTML = `<li class="empty muted">${t().noSightings}</li>`;
     return;
   }
 
@@ -349,7 +472,7 @@ function renderList(list) {
           <span class="sight-body">
             <span class="sight-name">
               ${shapeSvg(m.name, 12)}
-              ${escapeHtml(m.name)}
+              ${escapeHtml(displayName(m.name))}
             </span>
             <span class="sight-meta">${when} · ${m.lat.toFixed(3)}, ${m.lng.toFixed(3)}</span>
           </span>
@@ -385,7 +508,7 @@ function focusSighting(id) {
 }
 
 async function deleteMushroom(id) {
-  if (!confirm("Delete this sighting?")) return;
+  if (!confirm(t().confirmOne)) return;
   await fetch(`/api/mushrooms/${id}`, { method: "DELETE" });
   await refresh();
 }
@@ -401,7 +524,7 @@ map.on("click", (e) => {
 imageInput.addEventListener("change", async () => {
   const file = imageInput.files[0];
   if (!file) return;
-  formMsg.textContent = "Reading photo location…";
+  formMsg.textContent = t().readingPhoto;
   try {
     const fd = new FormData();
     fd.append("image", file);
@@ -412,12 +535,12 @@ imageInput.addEventListener("change", async () => {
       latInput.value = data.lat.toFixed(6);
       lngInput.value = data.lng.toFixed(6);
       dropPin(data.lat, data.lng);
-      bits.push("📍 Location");
+      bits.push("📍");
     }
     if (data.takenAt) bits.push("📸 " + new Date(data.takenAt).toLocaleDateString());
     formMsg.textContent = bits.length
-      ? bits.join(" · ") + " read from photo"
-      : "No GPS in photo — click the map to set location";
+      ? bits.join(" · ") + " " + t().locationRead
+      : t().noGps;
   } catch {
     formMsg.textContent = "";
   }
@@ -427,7 +550,7 @@ imageInput.addEventListener("change", async () => {
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   submitBtn.disabled = true;
-  formMsg.textContent = "Saving…";
+  formMsg.textContent = t().saving;
   try {
     const fd = new FormData(form);
     const res = await fetch("/api/mushrooms", { method: "POST", body: fd });
@@ -438,7 +561,7 @@ form.addEventListener("submit", async (e) => {
       map.removeLayer(pinMarker);
       pinMarker = null;
     }
-    formMsg.textContent = "✓ Added!";
+    formMsg.textContent = t().added;
     await refresh();
   } catch (err) {
     formMsg.textContent = "⚠ " + err.message;
@@ -462,7 +585,7 @@ clearFilterBtn.addEventListener("click", () => {
 refreshBtn.addEventListener("click", async () => {
   refreshBtn.disabled = true;
   const original = refreshBtn.textContent;
-  refreshBtn.textContent = "⟳ Refreshing…";
+  refreshBtn.textContent = t().refreshing;
   try {
     await refresh();
   } finally {
@@ -470,6 +593,53 @@ refreshBtn.addEventListener("click", async () => {
     refreshBtn.disabled = false;
   }
 });
+
+// --- language switch ------------------------------------------------------
+function applyLanguage() {
+  const s = t();
+  document.documentElement.lang = lang;
+
+  const set = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  set("t-subtitle", s.subtitle);
+  set("t-filter", s.filter);
+  set("t-mushroom-name", s.mushroomName);
+  set("t-species", s.species);
+  set("t-sightings", s.sightings);
+  set("t-add", s.addSighting);
+  set("t-name", s.name);
+  set("t-photo", s.photo);
+  set("t-lat", s.latitude);
+  set("t-lng", s.longitude);
+  set("t-notes", s.notes);
+  set("t-coord-hint", s.coordHint);
+  set("refresh", s.refresh);
+  set("submit-btn", s.addBtn);
+  set("save-jpg", s.saveJpg);
+  set("base-dark", s.dark);
+  set("base-sat", s.satellite);
+
+  filterInput.placeholder = s.allMushrooms;
+  document.getElementById("f-name").placeholder = s.namePlaceholder;
+  document.getElementById("f-notes").placeholder = s.notesPlaceholder;
+  document.getElementById("sidebar-hide").title = s.hidePanel;
+  document.getElementById("sidebar-show").title = s.showPanel;
+
+  document.getElementById("lang-pl").classList.toggle("active", lang === "pl");
+  document.getElementById("lang-en").classList.toggle("active", lang === "en");
+}
+
+async function setLanguage(next) {
+  lang = next;
+  localStorage.setItem("mm-lang", next);
+  applyLanguage();
+  await refresh(); // names, legend, list and popups all re-render translated
+}
+
+document.getElementById("lang-pl").onclick = () => setLanguage("pl");
+document.getElementById("lang-en").onclick = () => setLanguage("en");
 
 // --- base map switch & collapsible sidebar -------------------------------
 document.getElementById("base-dark").onclick = () => setBaseLayer("dark");
@@ -570,7 +740,8 @@ function drawLegend(ctx, entries, width, height) {
     ctx.stroke();
 
     ctx.fillStyle = "#e6e9ef";
-    const label = name.length > 24 ? name.slice(0, 23) + "…" : name;
+    const shownName = displayName(name);
+    const label = shownName.length > 24 ? shownName.slice(0, 23) + "…" : shownName;
     ctx.fillText(`${label} (${count})`, cx + 18, cy);
   });
 
@@ -585,7 +756,7 @@ async function exportMapJpg() {
   const btn = document.getElementById("save-jpg");
   const original = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "Rendering…";
+  btn.textContent = t().rendering;
 
   try {
     const cfg = BASE_LAYERS[currentBase];
@@ -685,10 +856,10 @@ async function exportMapJpg() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-    btn.textContent = "✓ Saved";
+    btn.textContent = t().saved;
   } catch (err) {
     console.error(err);
-    btn.textContent = "⚠ Failed";
+    btn.textContent = t().failed;
     alert(
       "Could not save the map image.\n\n" +
         err.message +
@@ -714,9 +885,12 @@ function escapeHtml(s) {
 }
 
 async function refresh() {
-  // Names first: they define the species -> colour mapping used by the markers.
+  // Dictionary first (display names), then names (colour/shape mapping),
+  // then the sightings themselves.
+  await loadSpeciesDictionary();
   await loadNames();
   await loadMushrooms();
 }
 
+applyLanguage();
 refresh();

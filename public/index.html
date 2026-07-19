@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="pl">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -19,24 +19,17 @@
             <h1>🍄 Mushroom Map</h1>
             <button id="sidebar-hide" class="ghost small" title="Hide panel">‹‹</button>
           </div>
-          <p class="sub">Log sightings &amp; explore where mushrooms grow.</p>
+          <p class="sub" id="t-subtitle"></p>
         </header>
 
         <section class="panel">
           <div class="panel-head">
-            <h2>Filter</h2>
-            <button id="refresh" class="ghost small" title="Reload sightings">
-              ⟳ Refresh
-            </button>
+            <h2 id="t-filter"></h2>
+            <button id="refresh" class="ghost small"></button>
           </div>
-          <label for="filter-name">Mushroom name</label>
+          <label for="filter-name" id="t-mushroom-name"></label>
           <div class="filter-row">
-            <input
-              id="filter-name"
-              list="name-options"
-              placeholder="All mushrooms…"
-              autocomplete="off"
-            />
+            <input id="filter-name" list="name-options" autocomplete="off" />
             <datalist id="name-options"></datalist>
             <button id="clear-filter" class="ghost" title="Clear">✕</button>
           </div>
@@ -44,43 +37,40 @@
         </section>
 
         <section class="panel" id="legend-panel" hidden>
-          <h2>Species</h2>
+          <h2 id="t-species"></h2>
           <ul id="legend" class="legend"></ul>
         </section>
 
         <section class="panel" id="list-panel">
-          <h2>Sightings</h2>
+          <h2 id="t-sightings"></h2>
           <ul id="sight-list" class="sight-list"></ul>
         </section>
 
         <section class="panel">
-          <h2>Add a sighting</h2>
+          <h2 id="t-add"></h2>
           <form id="add-form">
-            <label for="f-name">Name *</label>
-            <input id="f-name" name="name" placeholder="e.g. Chanterelle" required />
+            <label for="f-name"><span id="t-name"></span> *</label>
+            <input id="f-name" name="name" required />
 
-            <label for="f-image">Photo</label>
+            <label for="f-image" id="t-photo"></label>
             <input id="f-image" name="image" type="file" accept="image/*" />
 
             <div class="coords">
               <div>
-                <label for="f-lat">Latitude</label>
+                <label for="f-lat" id="t-lat"></label>
                 <input id="f-lat" name="lat" inputmode="decimal" />
               </div>
               <div>
-                <label for="f-lng">Longitude</label>
+                <label for="f-lng" id="t-lng"></label>
                 <input id="f-lng" name="lng" inputmode="decimal" />
               </div>
             </div>
-            <p class="hint">
-              Coordinates auto-fill from a geotagged photo's EXIF. Otherwise click
-              the map to drop a pin.
-            </p>
+            <p class="hint" id="t-coord-hint"></p>
 
-            <label for="f-notes">Notes</label>
-            <textarea id="f-notes" name="notes" rows="2" placeholder="Habitat, date, etc."></textarea>
+            <label for="f-notes" id="t-notes"></label>
+            <textarea id="f-notes" name="notes" rows="2"></textarea>
 
-            <button type="submit" id="submit-btn">Add sighting</button>
+            <button type="submit" id="submit-btn"></button>
             <p id="form-msg" class="muted"></p>
           </form>
         </section>
@@ -91,13 +81,15 @@
       <button id="sidebar-show" title="Show panel">››</button>
 
       <div id="map-controls">
-        <div class="seg" role="group" aria-label="Base map">
-          <button id="base-dark" class="active">Dark</button>
-          <button id="base-sat">Satellite</button>
+        <div class="seg" role="group" aria-label="Language">
+          <button id="lang-pl">PL</button>
+          <button id="lang-en">EN</button>
         </div>
-        <button id="save-jpg" title="Save the current view as a JPG">
-          ⤓ Save JPG
-        </button>
+        <div class="seg" role="group" aria-label="Base map">
+          <button id="base-dark"></button>
+          <button id="base-sat"></button>
+        </div>
+        <button id="save-jpg"></button>
       </div>
     </div>
 

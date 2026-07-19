@@ -273,6 +273,17 @@ app.get("/api/mushrooms", (req, res) => {
   res.json(records);
 });
 
+// Latin -> Polish common names. Edit data/species-pl.json to extend it;
+// anything missing simply falls back to the Latin name in the UI.
+const SPECIES_PL_FILE = path.join(DATA_DIR, "species-pl.json");
+app.get("/api/species-names", (_req, res) => {
+  try {
+    res.json(JSON.parse(fs.readFileSync(SPECIES_PL_FILE, "utf8")));
+  } catch {
+    res.json({}); // no dictionary yet: the UI keeps showing Latin names
+  }
+});
+
 // Distinct mushroom names (for the filter dropdown).
 app.get("/api/names", (_req, res) => {
   const names = [...new Set(readAll().map((r) => r.name))].sort((a, b) =>
