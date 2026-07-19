@@ -56,47 +56,115 @@ const PALETTE = [
   "#4f8ff0", "#7c6ff0", "#a86ce0", "#e06cc4", "#f07396", "#b58a5a", "#8fa3b8",
 ];
 
-let colorByName = new Map();
+// Shape is the second dimension: 14 colours x 5 shapes = 70 distinct markers,
+// so species stay tellable apart well past the point where colour alone repeats.
+const SHAPES = ["circle", "square", "triangle", "diamond", "hexagon"];
 
-function assignColors(names) {
-  colorByName = new Map();
+let styleByName = new Map();
+
+function assignStyles(names) {
+  styleByName = new Map();
   const sorted = [...names].sort((a, b) => a.localeCompare(b));
   const n = sorted.length;
 
   sorted.forEach((name, i) => {
-    // With room to spare, spread picks across the palette so neighbouring
-    // species get well-separated hues instead of adjacent ones.
-    const idx =
-      n <= PALETTE.length
-        ? Math.floor((i * PALETTE.length) / Math.max(n, 1))
-        : i % PALETTE.length;
-    colorByName.set(name.trim().toLowerCase(), PALETTE[idx]);
+    let color, shape;
+    if (n <= PALETTE.length) {
+      // Few species: every one gets its own colour, spread across the palette
+      // so neighbours are not near-identical hues. All circles.
+      color = PALETTE[Math.floor((i * PALETTE.length) / Math.max(n, 1))];
+      shape = "circle";
+    } else {
+      // Many species: cycle shape fastest so adjacent entries differ at a
+      // glance, and step the colour every full pass. (colour, shape) pairs are
+      // unique until 14 x 5 species.
+      shape = SHAPES[i % SHAPES.length];
+      color = PALETTE[Math.floor(i / SHAPES.length) % PALETTE.length];
+    }
+    styleByName.set(name.trim().toLowerCase(), { color, shape });
   });
 }
 
-function colorForName(name) {
+function styleForName(name) {
   const key = String(name).trim().toLowerCase();
-  const known = colorByName.get(key);
+  const known = styleByName.get(key);
   if (known) return known;
 
-  // Fallback for a name not yet in /api/names (stable hash into the palette).
+  // Fallback for a name not yet in /api/names (stable hash).
   let h = 2166136261;
   for (let i = 0; i < key.length; i++) {
     h ^= key.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  return PALETTE[(h >>> 0) % PALETTE.length];
+  h = h >>> 0;
+  return {
+    color: PALETTE[h % PALETTE.length],
+    shape: SHAPES[Math.floor(h / PALETTE.length) % SHAPES.length],
+  };
 }
 
-function markerStyle(name) {
-  return {
-    radius: 8,
-    fillColor: colorForName(name),
-    fillOpacity: 0.95,
-    color: "#f2f5fa",
-    weight: 1.5,
-    opacity: 0.9,
-  };
+function colorForName(name) {
+  return styleForName(name).color;
+}
+
+// --- shape rendering ------------------------------------------------------
+// SVG for the DOM (markers, legend, list); a canvas path for the JPG export.
+const SHAPE_POINTS = {
+  square: "3,3 17,3 17,17 3,17",
+  triangle: "10,2 18,16.5 2,16.5",
+  diamond: "10,1 18.5,10 10,19 1.5,10",
+  hexagon: "10,1.5 17.4,5.75 17.4,14.25 10,18.5 2.6,14.25 2.6,5.75",
+};
+
+function shapeSvg(name, size = 14) {
+  const { color, shape } = styleForName(name);
+  const body =
+    shape === "circle"
+      ? `<circle cx="10" cy="10" r="8" />`
+      : `<polygon points="${SHAPE_POINTS[shape]}" />`;
+  return (
+    `<svg class="swatch" width="${size}" height="${size}" viewBox="0 0 20 20" ` +
+    `fill="${color}" stroke="rgba(255,255,255,0.85)" stroke-width="1.5">${body}</svg>`
+  );
+}
+
+function shapePath(ctx, shape, x, y, r) {
+  ctx.beginPath();
+  if (shape === "square") {
+    ctx.rect(x - r * 0.85, y - r * 0.85, r * 1.7, r * 1.7);
+  } else if (shape === "triangle") {
+    ctx.moveTo(x, y - r * 1.1);
+    ctx.lineTo(x + r * 1.05, y + r * 0.75);
+    ctx.lineTo(x - r * 1.05, y + r * 0.75);
+    ctx.closePath();
+  } else if (shape === "diamond") {
+    ctx.moveTo(x, y - r * 1.2);
+    ctx.lineTo(x + r * 1.1, y);
+    ctx.lineTo(x, y + r * 1.2);
+    ctx.lineTo(x - r * 1.1, y);
+    ctx.closePath();
+  } else if (shape === "hexagon") {
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 180) * (60 * i - 30);
+      const px = x + r * Math.cos(a);
+      const py = y + r * Math.sin(a);
+      if (i) ctx.lineTo(px, py);
+      else ctx.moveTo(px, py);
+    }
+    ctx.closePath();
+  } else {
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+  }
+}
+
+function markerIcon(name) {
+  return L.divIcon({
+    className: "species-marker",
+    html: shapeSvg(name, 20),
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+    popupAnchor: [0, -11],
+  });
 }
 
 // --- elements ------------------------------------------------------------
@@ -135,7 +203,7 @@ function dropPin(lat, lng) {
 async function loadNames() {
   const res = await fetch("/api/names");
   const names = await res.json();
-  assignColors(names);
+  assignStyles(names);
   nameOptions.innerHTML = names
     .map((n) => `<option value="${escapeHtml(n)}"></option>`)
     .join("");
@@ -164,7 +232,10 @@ function renderMarkers(list) {
   const bounds = [];
 
   for (const m of list) {
-    const marker = L.circleMarker([m.lat, m.lng], markerStyle(m.name));
+    const marker = L.marker([m.lat, m.lng], {
+      icon: markerIcon(m.name),
+      title: m.name,
+    });
     marker.bindPopup(popupHtml(m));
     marker.on("popupopen", (e) => {
       const btn = e.popup.getElement().querySelector(".del");
@@ -188,7 +259,7 @@ function popupHtml(m) {
     : `Logged ${new Date(m.createdAt).toLocaleString()}`;
   return `
     <div class="popup">
-      <h3><span class="dot" style="background:${colorForName(m.name)}"></span>${escapeHtml(m.name)}</h3>
+      <h3>${shapeSvg(m.name, 13)}${escapeHtml(m.name)}</h3>
       ${img}
       ${notes}
       <div class="meta">${m.lat.toFixed(5)}, ${m.lng.toFixed(5)}</div>
@@ -214,7 +285,7 @@ function renderLegend(list) {
     .map(
       ([name, n]) => `
         <li class="legend-item" data-name="${escapeHtml(name)}" title="Filter by ${escapeHtml(name)}">
-          <span class="dot" style="background:${colorForName(name)}"></span>
+          ${shapeSvg(name, 13)}
           <span class="legend-name">${escapeHtml(name)}</span>
           <span class="badge">${n}</span>
         </li>`
@@ -249,7 +320,7 @@ function renderList(list) {
           ${thumb}
           <span class="sight-body">
             <span class="sight-name">
-              <span class="dot" style="background:${colorForName(m.name)}"></span>
+              ${shapeSvg(m.name, 12)}
               ${escapeHtml(m.name)}
             </span>
             <span class="sight-meta">${when} · ${m.lat.toFixed(3)}, ${m.lng.toFixed(3)}</span>
@@ -457,9 +528,9 @@ function drawLegend(ctx, entries, width, height) {
     const cx = x + pad + col * colW;
     const cy = y + pad + headerH + row * lineH + 10;
 
-    ctx.fillStyle = colorForName(name);
-    ctx.beginPath();
-    ctx.arc(cx + 6, cy - 4, 5.5, 0, Math.PI * 2);
+    const { color, shape } = styleForName(name);
+    shapePath(ctx, shape, cx + 6, cy - 4, 5.5);
+    ctx.fillStyle = color;
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.8)";
     ctx.lineWidth = 1;
@@ -531,18 +602,16 @@ async function exportMapJpg() {
 
     // --- markers (only what is currently shown)
     const counts = new Map();
-    markerLayer.eachLayer((layer) => {
-      const ll = layer.getLatLng();
-      const p = map.latLngToContainerPoint(ll);
-      const fill = layer.options.fillColor;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-      ctx.fillStyle = fill;
+    for (const m of currentList) {
+      const p = map.latLngToContainerPoint([m.lat, m.lng]);
+      const { color, shape } = styleForName(m.name);
+      shapePath(ctx, shape, p.x, p.y, 8);
+      ctx.fillStyle = color;
       ctx.fill();
       ctx.strokeStyle = "#f2f5fa";
       ctx.lineWidth = 1.5;
       ctx.stroke();
-    });
+    }
 
     // legend entries come from the current (filtered) list
     for (const m of currentList) {

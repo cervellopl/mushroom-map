@@ -34,6 +34,9 @@ The startup log reports whether auth is `ENABLED` or `disabled`.
 - Dark UI with a full-screen map (CartoDB `dark_matter` tiles).
 - **Base map switch** — dark cartography or **satellite imagery** (Esri World Imagery).
 - **Hideable side panel** — collapse it for a full-width map, restore with the `››` button.
+- **Species markers** — each species gets a colour **and a shape** (circle, square,
+  triangle, diamond, hexagon). 14 colours x 5 shapes keeps species distinguishable
+  well past the point where colour alone would repeat.
 - **Save JPG** — exports the current view as a JPEG with the markers and a species
   legend drawn in. Tiles are re-fetched with CORS and composited onto a canvas, so
   no screenshot tooling or external library is needed.
