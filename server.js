@@ -281,6 +281,35 @@ app.get("/api/names", (_req, res) => {
   res.json(names);
 });
 
+// Delete every sighting of one species (exact, case-insensitive name match),
+// along with their image files. Returns how many were removed.
+app.delete("/api/species/:name", (req, res) => {
+  const target = String(req.params.name || "").trim().toLowerCase();
+  if (!target) return res.status(400).json({ error: "name is required" });
+
+  const records = readAll();
+  const keep = [];
+  const removed = [];
+  for (const r of records) {
+    if (r.name.trim().toLowerCase() === target) removed.push(r);
+    else keep.push(r);
+  }
+
+  if (removed.length === 0) {
+    return res.status(404).json({ error: "no sightings with that name" });
+  }
+
+  writeAll(keep);
+  for (const r of removed) {
+    if (!r.imageUrl) continue;
+    const file = path.join(UPLOAD_DIR, path.basename(r.imageUrl));
+    fs.rm(file, { force: true }, () => {});
+  }
+
+  logLine(`DELETED species "${req.params.name}" (${removed.length} sightings)`);
+  res.json({ ok: true, deleted: removed.length });
+});
+
 // Delete a sighting (and its image file).
 app.delete("/api/mushrooms/:id", (req, res) => {
   const records = readAll();

@@ -140,6 +140,28 @@ button.small { padding: 5px 9px; font-size: 0.75rem; }
 }
 .legend-item:hover { background: var(--panel); }
 .legend-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* delete button on legend / list rows — revealed on hover */
+.row-del {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  padding: 1px 6px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  border-radius: 6px;
+  opacity: 0;
+  flex: 0 0 auto;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+.legend-item:hover .row-del,
+.sight-item:hover .row-del,
+.row-del:focus-visible { opacity: 1; }
+.row-del:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
 .badge {
   background: var(--panel);
   border: 1px solid var(--border);

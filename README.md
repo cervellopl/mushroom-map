@@ -42,6 +42,9 @@ The startup log reports whether auth is `ENABLED` or `disabled`.
   no screenshot tooling or external library is needed.
 - Each sighting is a 🍄 marker; click it for the photo, notes, coordinates, and a delete button.
 - **Filter** box (with autocomplete of known names) narrows the markers live.
+- **Delete buttons** — hover a row to reveal `✕`: on a **sightings list** row it removes
+  that one sighting; on a **legend** row it removes the whole species group. Both ask
+  for confirmation and state how many records will go.
 - **Add a sighting** form:
   - Pick a **geotagged photo** and the coordinates auto-fill from its EXIF GPS (a pin drops on the map instantly).
   - No GPS in the photo? Click the map to drop a pin, or type coordinates manually.
@@ -70,6 +73,7 @@ How it flows:
 | GET    | `/api/names`         | Distinct mushroom names (for the filter dropdown)   |
 | POST   | `/api/exif`          | Read GPS from an uploaded photo without saving it   |
 | DELETE | `/api/mushrooms/:id` | Delete a sighting and its image                      |
+| DELETE | `/api/species/:name` | Delete **every** sighting of one species (exact, case-insensitive name) |
 
 ### Create fields (`multipart/form-data`)
 

@@ -284,10 +284,11 @@ function renderLegend(list) {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(
       ([name, n]) => `
-        <li class="legend-item" data-name="${escapeHtml(name)}" title="Filter by ${escapeHtml(name)}">
+        <li class="legend-item" data-name="${escapeHtml(name)}" data-count="${n}" title="Filter by ${escapeHtml(name)}">
           ${shapeSvg(name, 13)}
           <span class="legend-name">${escapeHtml(name)}</span>
           <span class="badge">${n}</span>
+          <button class="row-del" title="Delete all ${n} ${escapeHtml(name)} sightings">✕</button>
         </li>`
     )
     .join("");
@@ -297,7 +298,34 @@ function renderLegend(list) {
       filterInput.value = li.dataset.name;
       loadMushrooms();
     };
+    li.querySelector(".row-del").onclick = (e) => {
+      e.stopPropagation(); // don't also trigger the filter
+      deleteSpecies(li.dataset.name, Number(li.dataset.count));
+    };
   });
+}
+
+// Delete every sighting of one species.
+async function deleteSpecies(name, count) {
+  const ok = confirm(
+    `Delete the whole "${name}" group?\n\n` +
+      `This permanently removes ${count} sighting${count === 1 ? "" : "s"} ` +
+      `and their photos. This cannot be undone.`
+  );
+  if (!ok) return;
+
+  const res = await fetch(`/api/species/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    alert("Could not delete: " + (data.error || res.status));
+    return;
+  }
+  if (filterInput.value.trim().toLowerCase() === name.trim().toLowerCase()) {
+    filterInput.value = ""; // the filtered species no longer exists
+  }
+  await refresh();
 }
 
 // --- sightings list ------------------------------------------------------
@@ -325,12 +353,17 @@ function renderList(list) {
             </span>
             <span class="sight-meta">${when} · ${m.lat.toFixed(3)}, ${m.lng.toFixed(3)}</span>
           </span>
+          <button class="row-del" title="Delete this sighting">✕</button>
         </li>`;
     })
     .join("");
 
   listEl.querySelectorAll(".sight-item").forEach((li) => {
     li.onclick = () => focusSighting(li.dataset.id);
+    li.querySelector(".row-del").onclick = (e) => {
+      e.stopPropagation(); // don't also fly to the marker
+      deleteMushroom(li.dataset.id);
+    };
   });
 }
 
