@@ -38,7 +38,10 @@ The startup log reports whether auth is `ENABLED` or `disabled`.
   triangle, diamond, hexagon). 14 colours x 5 shapes keeps species distinguishable
   well past the point where colour alone would repeat.
 - **Save JPG** — exports the current view as a JPEG with the markers and a species
-  legend drawn in. Tiles are re-fetched with CORS and composited onto a canvas, so
+  legend drawn in. The legend has two layouts, picked with the ▤ / ▬ buttons:
+  a **box in the bottom-left corner**, or a **full-width strip along the bottom**
+  whose entries flow left-to-right and wrap. Both keep clear of the attribution
+  line and truncate with a `+N` note rather than overflowing the image. Tiles are re-fetched with CORS and composited onto a canvas, so
   no screenshot tooling or external library is needed.
 - Each sighting is a 🍄 marker; click it for the photo, notes, coordinates, and a delete button.
 - **Language switch (PL / EN)** — the whole interface plus species names. In Polish,

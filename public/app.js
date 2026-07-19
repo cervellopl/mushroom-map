@@ -29,6 +29,8 @@ const I18N = {
     satellite: "Satellite",
     hidePanel: "Hide panel",
     showPanel: "Show panel",
+    legendVertical: "Legend: box in the corner",
+    legendHorizontal: "Legend: strip along the bottom",
     delete: "Delete",
     taken: "📸 Taken",
     logged: "Logged",
@@ -74,6 +76,8 @@ const I18N = {
     satellite: "Satelita",
     hidePanel: "Ukryj panel",
     showPanel: "Pokaż panel",
+    legendVertical: "Legenda: ramka w rogu",
+    legendHorizontal: "Legenda: pasek na dole",
     delete: "Usuń",
     taken: "📸 Zrobione",
     logged: "Dodano",
@@ -627,6 +631,10 @@ function applyLanguage() {
   document.getElementById("sidebar-hide").title = s.hidePanel;
   document.getElementById("sidebar-show").title = s.showPanel;
 
+  document.getElementById("legend-vertical").title = s.legendVertical;
+  document.getElementById("legend-horizontal").title = s.legendHorizontal;
+  syncLegendButtons();
+
   document.getElementById("lang-pl").classList.toggle("active", lang === "pl");
   document.getElementById("lang-en").classList.toggle("active", lang === "en");
 }
@@ -637,6 +645,24 @@ async function setLanguage(next) {
   applyLanguage();
   await refresh(); // names, legend, list and popups all re-render translated
 }
+
+function syncLegendButtons() {
+  document
+    .getElementById("legend-vertical")
+    .classList.toggle("active", legendLayout === "vertical");
+  document
+    .getElementById("legend-horizontal")
+    .classList.toggle("active", legendLayout === "horizontal");
+}
+
+function setLegendLayout(next) {
+  legendLayout = next;
+  localStorage.setItem("mm-legend-layout", next);
+  syncLegendButtons();
+}
+
+document.getElementById("legend-vertical").onclick = () => setLegendLayout("vertical");
+document.getElementById("legend-horizontal").onclick = () => setLegendLayout("horizontal");
 
 document.getElementById("lang-pl").onclick = () => setLanguage("pl");
 document.getElementById("lang-en").onclick = () => setLanguage("en");
@@ -680,9 +706,116 @@ function loadImage(src) {
   });
 }
 
+// Legend placement for the exported image: a box in the bottom-left corner, or
+// a full-width strip along the bottom.
+let legendLayout = localStorage.getItem("mm-legend-layout") || "vertical";
+
+const LEGEND_BG = "rgba(14, 17, 22, 0.84)";
+const LEGEND_BORDER = "rgba(255,255,255,0.18)";
+const CREDIT_CLEARANCE = 26; // keep clear of the attribution line
+
+function legendBox(ctx, x, y, w, h) {
+  ctx.fillStyle = LEGEND_BG;
+  ctx.strokeStyle = LEGEND_BORDER;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, 10);
+  else ctx.rect(x, y, w, h);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function legendEntry(ctx, name, count, x, baseline) {
+  const { color, shape } = styleForName(name);
+  shapePath(ctx, shape, x + 6, baseline - 4, 5.5);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.8)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = "#e6e9ef";
+  const shownName = displayName(name);
+  const label = shownName.length > 24 ? shownName.slice(0, 23) + "…" : shownName;
+  ctx.fillText(`${label} (${count})`, x + 18, baseline);
+}
+
+function drawLegend(ctx, entries, width, height) {
+  if (entries.length === 0) return;
+  if (legendLayout === "horizontal") {
+    drawLegendHorizontal(ctx, entries, width, height);
+  } else {
+    drawLegendVertical(ctx, entries, width, height);
+  }
+}
+
+// Full-width strip along the bottom: entries flow left to right and wrap.
+function drawLegendHorizontal(ctx, entries, width, height) {
+  const pad = 10;
+  const margin = 14;
+  const lineH = 18;
+  const gap = 16;
+  const headerH = 18;
+
+  ctx.save();
+  ctx.font = "12px system-ui, sans-serif";
+
+  const inner = width - margin * 2 - pad * 2;
+  const items = entries.map(([name, count]) => {
+    const shownName = displayName(name);
+    const label =
+      (shownName.length > 24 ? shownName.slice(0, 23) + "…" : shownName) +
+      ` (${count})`;
+    return { name, count, w: 18 + ctx.measureText(label).width + gap };
+  });
+
+  // wrap into rows
+  const rows = [[]];
+  let used = 0;
+  for (const it of items) {
+    if (used + it.w > inner && rows[rows.length - 1].length) {
+      rows.push([]);
+      used = 0;
+    }
+    rows[rows.length - 1].push(it);
+    used += it.w;
+  }
+
+  // keep the strip to a third of the image at most
+  const maxRows = Math.max(1, Math.floor((height * 0.34 - pad * 2 - headerH) / lineH));
+  let overflow = 0;
+  if (rows.length > maxRows) {
+    for (let i = maxRows; i < rows.length; i++) overflow += rows[i].length;
+    rows.length = maxRows;
+  }
+
+  const boxH = pad * 2 + headerH + rows.length * lineH;
+  const boxW = width - margin * 2;
+  const x = margin;
+  const y = height - boxH - margin - CREDIT_CLEARANCE;
+
+  legendBox(ctx, x, y, boxW, boxH);
+
+  ctx.fillStyle = "#f0a55e";
+  ctx.font = "600 13px system-ui, sans-serif";
+  const title = `${t().species} (${entries.length})` + (overflow ? `  · +${overflow}` : "");
+  ctx.fillText(title, x + pad, y + pad + 11);
+
+  ctx.font = "12px system-ui, sans-serif";
+  rows.forEach((row, r) => {
+    let cx = x + pad;
+    const baseline = y + pad + headerH + r * lineH + 10;
+    for (const it of row) {
+      legendEntry(ctx, it.name, it.count, cx, baseline);
+      cx += it.w;
+    }
+  });
+  ctx.restore();
+}
+
 // Lays the legend out in as many columns as needed to fit the image height,
 // truncating (with a "+N more" note) only if even that is not enough.
-function drawLegend(ctx, entries, width, height) {
+function drawLegendVertical(ctx, entries, width, height) {
   if (entries.length === 0) return;
 
   const pad = 12;
@@ -711,43 +844,26 @@ function drawLegend(ctx, entries, width, height) {
   const y = height - boxH - margin;
 
   ctx.save();
-  ctx.fillStyle = "rgba(14, 17, 22, 0.84)";
-  ctx.strokeStyle = "rgba(255,255,255,0.18)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  if (ctx.roundRect) ctx.roundRect(x, y, boxW, boxH, 10);
-  else ctx.rect(x, y, boxW, boxH); // older browsers
-  ctx.fill();
-  ctx.stroke();
+  legendBox(ctx, x, y, boxW, boxH);
 
   ctx.fillStyle = "#f0a55e";
   ctx.font = "600 14px system-ui, sans-serif";
-  ctx.fillText(`Species (${entries.length})`, x + pad, y + pad + 14);
+  ctx.fillText(`${t().species} (${entries.length})`, x + pad, y + pad + 14);
 
   ctx.font = "12px system-ui, sans-serif";
   shown.forEach(([name, count], i) => {
     const col = Math.floor(i / rows);
     const row = i % rows;
-    const cx = x + pad + col * colW;
-    const cy = y + pad + headerH + row * lineH + 10;
-
-    const { color, shape } = styleForName(name);
-    shapePath(ctx, shape, cx + 6, cy - 4, 5.5);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.8)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.fillStyle = "#e6e9ef";
-    const shownName = displayName(name);
-    const label = shownName.length > 24 ? shownName.slice(0, 23) + "…" : shownName;
-    ctx.fillText(`${label} (${count})`, cx + 18, cy);
+    legendEntry(
+      ctx, name, count,
+      x + pad + col * colW,
+      y + pad + headerH + row * lineH + 10
+    );
   });
 
   if (overflow) {
     ctx.fillStyle = "#8b95a5";
-    ctx.fillText(`+${overflow} more species`, x + pad, y + boxH - pad - 2);
+    ctx.fillText(`+${overflow}`, x + pad, y + boxH - pad - 2);
   }
   ctx.restore();
 }
